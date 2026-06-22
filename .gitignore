@@ -1,0 +1,42 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Compiled binaries
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Profiling output
+*.out
+
+# Private keys and certificates
+keys/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# IDE / editor
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendor (if not vendoring)
+# vendor/
