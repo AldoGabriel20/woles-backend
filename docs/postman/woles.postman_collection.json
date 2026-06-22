@@ -1,0 +1,1031 @@
+{
+  "info": {
+    "_postman_id": "woles-api-v1",
+    "name": "Woles API",
+    "description": "Woles — WhatsApp-first personal life administration assistant.\n\nAll authenticated requests require a valid RS256 JWT in the Authorization header.\nRefresh tokens are stored as HttpOnly cookies and are managed automatically.\n\n**Setup:** Import `woles.postman_environment.json` alongside this collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-refresh expired access token before every request",
+          "const token = pm.environment.get('access_token');",
+          "if (!token) return;",
+          "",
+          "// Decode JWT payload (no signature verification needed here)",
+          "function decodeJwtExp(jwt) {",
+          "    try {",
+          "        const parts = jwt.split('.');",
+          "        if (parts.length !== 3) return null;",
+          "        const payload = JSON.parse(atob(parts[1]));",
+          "        return payload.exp || null;",
+          "    } catch (e) { return null; }",
+          "}",
+          "",
+          "const exp = decodeJwtExp(token);",
+          "if (!exp) return;",
+          "",
+          "const nowSec = Math.floor(Date.now() / 1000);",
+          "const bufferSec = 30; // refresh 30s before actual expiry",
+          "",
+          "if (exp - nowSec < bufferSec) {",
+          "    const baseUrl = pm.environment.get('base_url');",
+          "    pm.sendRequest({",
+          "        url: baseUrl + '/auth/refresh',",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/json' }",
+          "    }, function (err, res) {",
+          "        if (!err && res.code === 200) {",
+          "            const body = res.json();",
+          "            if (body.access_token) {",
+          "                pm.environment.set('access_token', body.access_token);",
+          "            }",
+          "        }",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.environment.set('access_token', body.tokens.access_token);",
+                  "    pm.environment.set('user_id', body.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/register", "host": ["{{base_url}}"], "path": ["auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Str0ngP@ss\",\n  \"name\": \"Test User\",\n  \"timezone\": \"Asia/Jakarta\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.environment.set('access_token', body.tokens.access_token);",
+                  "    pm.environment.set('user_id', body.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/login", "host": ["{{base_url}}"], "path": ["auth", "login"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Str0ngP@ss\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/auth/logout", "host": ["{{base_url}}"], "path": ["auth", "logout"] }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Override global pre-request: do NOT auto-refresh before a refresh call",
+                  "// (avoids infinite loop). The global script is collection-level and will run,",
+                  "// but the refresh endpoint itself handles an expired token gracefully."
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    pm.environment.set('access_token', body.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/auth/refresh", "host": ["{{base_url}}"], "path": ["auth", "refresh"] }
+          }
+        },
+        {
+          "name": "Request OTP",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/otp/request", "host": ["{{base_url}}"], "path": ["auth", "otp", "request"] },
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"+6281234567890\"\n}" }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/otp/verify", "host": ["{{base_url}}"], "path": ["auth", "otp", "verify"] },
+            "body": { "mode": "raw", "raw": "{\n  \"phone\": \"+6281234567890\",\n  \"otp\": \"123456\"\n}" }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/password/change", "host": ["{{base_url}}"], "path": ["auth", "password", "change"] },
+            "body": { "mode": "raw", "raw": "{\n  \"old_password\": \"Str0ngP@ss\",\n  \"new_password\": \"N3wP@ssword\"\n}" }
+          }
+        },
+        {
+          "name": "Reset Password — Request",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/password/reset/request", "host": ["{{base_url}}"], "path": ["auth", "password", "reset", "request"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"user@example.com\"\n}" }
+          }
+        },
+        {
+          "name": "Reset Password — Confirm",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/password/reset/confirm", "host": ["{{base_url}}"], "path": ["auth", "password", "reset", "confirm"] },
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"reset-token-here\",\n  \"new_password\": \"N3wP@ssword\"\n}" }
+          }
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/auth/me", "host": ["{{base_url}}"], "path": ["auth", "me"] }
+          }
+        },
+        {
+          "name": "Enable 2FA",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/auth/2fa/enable", "host": ["{{base_url}}"], "path": ["auth", "2fa", "enable"] }
+          }
+        },
+        {
+          "name": "Verify 2FA",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/2fa/verify", "host": ["{{base_url}}"], "path": ["auth", "2fa", "verify"] },
+            "body": { "mode": "raw", "raw": "{\n  \"totp_code\": \"123456\"\n}" }
+          }
+        },
+        {
+          "name": "Disable 2FA",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/auth/2fa/disable", "host": ["{{base_url}}"], "path": ["auth", "2fa", "disable"] },
+            "body": { "mode": "raw", "raw": "{\n  \"password\": \"Str0ngP@ss\"\n}" }
+          }
+        },
+        {
+          "name": "Get Sessions",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/auth/sessions", "host": ["{{base_url}}"], "path": ["auth", "sessions"] }
+          }
+        },
+        {
+          "name": "Revoke Session",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/auth/sessions/{{session_id}}", "host": ["{{base_url}}"], "path": ["auth", "sessions", "{{session_id}}"] }
+          }
+        },
+        {
+          "name": "Revoke All Sessions",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/auth/sessions", "host": ["{{base_url}}"], "path": ["auth", "sessions"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reminders",
+      "item": [
+        {
+          "name": "Create Reminder",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('reminder_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/reminders", "host": ["{{base_url}}"], "path": ["reminders"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bayar BPJS\",\n  \"category\": \"health\",\n  \"recurrence_type\": \"monthly\",\n  \"next_run_at\": \"2026-07-20T09:00:00+07:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Reminders",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/reminders?page=1&per_page=20&status=active&sort=next_run_at&order=asc",
+              "host": ["{{base_url}}"],
+              "path": ["reminders"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" },
+                { "key": "status", "value": "active" },
+                { "key": "sort", "value": "next_run_at" },
+                { "key": "order", "value": "asc" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Reminder",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/reminders/{{reminder_id}}", "host": ["{{base_url}}"], "path": ["reminders", "{{reminder_id}}"] }
+          }
+        },
+        {
+          "name": "Update Reminder",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/reminders/{{reminder_id}}", "host": ["{{base_url}}"], "path": ["reminders", "{{reminder_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"title\": \"Bayar BPJS — Updated\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Reminder",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/reminders/{{reminder_id}}", "host": ["{{base_url}}"], "path": ["reminders", "{{reminder_id}}"] }
+          }
+        },
+        {
+          "name": "Pause Reminder",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/reminders/{{reminder_id}}/pause", "host": ["{{base_url}}"], "path": ["reminders", "{{reminder_id}}", "pause"] }
+          }
+        },
+        {
+          "name": "Resume Reminder",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/reminders/{{reminder_id}}/resume", "host": ["{{base_url}}"], "path": ["reminders", "{{reminder_id}}", "resume"] }
+          }
+        },
+        {
+          "name": "Complete Occurrence",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/reminders/{{reminder_id}}/complete", "host": ["{{base_url}}"], "path": ["reminders", "{{reminder_id}}", "complete"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Create Document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('document_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/documents", "host": ["{{base_url}}"], "path": ["documents"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"STNK Honda Civic 2023\",\n  \"vault_category\": \"vehicles\",\n  \"storage_type\": \"physical\",\n  \"expiry_date\": \"2027-04-15\",\n  \"reminder_offsets\": [30, 7, 1]\n}"
+            }
+          }
+        },
+        {
+          "name": "List Documents",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/documents?page=1&per_page=20&status=active&vault_category=vehicles",
+              "host": ["{{base_url}}"],
+              "path": ["documents"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" },
+                { "key": "status", "value": "active" },
+                { "key": "vault_category", "value": "vehicles" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Document",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/documents/{{document_id}}", "host": ["{{base_url}}"], "path": ["documents", "{{document_id}}"] }
+          }
+        },
+        {
+          "name": "Update Document",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/documents/{{document_id}}", "host": ["{{base_url}}"], "path": ["documents", "{{document_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"expiry_date\": \"2028-04-15\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Document",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/documents/{{document_id}}", "host": ["{{base_url}}"], "path": ["documents", "{{document_id}}"] }
+          }
+        },
+        {
+          "name": "Upload Document File",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/documents/{{document_id}}/file", "host": ["{{base_url}}"], "path": ["documents", "{{document_id}}", "file"] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": "" }]
+            }
+          }
+        },
+        {
+          "name": "Delete Document File",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/documents/{{document_id}}/file", "host": ["{{base_url}}"], "path": ["documents", "{{document_id}}", "file"] }
+          }
+        },
+        {
+          "name": "Get Storage Usage",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/documents/storage/usage", "host": ["{{base_url}}"], "path": ["documents", "storage", "usage"] }
+          }
+        },
+        {
+          "name": "Get Vault Health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/documents/vault/health", "host": ["{{base_url}}"], "path": ["documents", "vault", "health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscriptions",
+      "item": [
+        {
+          "name": "Create Subscription",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('subscription_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/subscriptions", "host": ["{{base_url}}"], "path": ["subscriptions"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Netflix\",\n  \"amount\": 54000,\n  \"currency\": \"IDR\",\n  \"billing_cycle\": \"monthly\",\n  \"category\": \"entertainment\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Subscriptions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/subscriptions?page=1&per_page=20&status=active",
+              "host": ["{{base_url}}"],
+              "path": ["subscriptions"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" },
+                { "key": "status", "value": "active" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Subscription",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/subscriptions/{{subscription_id}}", "host": ["{{base_url}}"], "path": ["subscriptions", "{{subscription_id}}"] }
+          }
+        },
+        {
+          "name": "Update Subscription",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/subscriptions/{{subscription_id}}", "host": ["{{base_url}}"], "path": ["subscriptions", "{{subscription_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"amount\": 59000\n}" }
+          }
+        },
+        {
+          "name": "Delete Subscription",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/subscriptions/{{subscription_id}}", "host": ["{{base_url}}"], "path": ["subscriptions", "{{subscription_id}}"] }
+          }
+        },
+        {
+          "name": "Archive Subscription",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/subscriptions/{{subscription_id}}/archive", "host": ["{{base_url}}"], "path": ["subscriptions", "{{subscription_id}}", "archive"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Goals",
+      "item": [
+        {
+          "name": "Create Goal",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('goal_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/goals", "host": ["{{base_url}}"], "path": ["goals"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Emergency Fund\",\n  \"icon\": \"emergency\",\n  \"target_amount\": 50000000,\n  \"currency\": \"IDR\",\n  \"monthly_target\": 2000000\n}"
+            }
+          }
+        },
+        {
+          "name": "List Goals",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/goals?page=1&per_page=20&status=active",
+              "host": ["{{base_url}}"],
+              "path": ["goals"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" },
+                { "key": "status", "value": "active" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Goal History",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/goals/history?page=1&per_page=20",
+              "host": ["{{base_url}}"],
+              "path": ["goals", "history"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Goal",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/goals/{{goal_id}}", "host": ["{{base_url}}"], "path": ["goals", "{{goal_id}}"] }
+          }
+        },
+        {
+          "name": "Update Goal",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/goals/{{goal_id}}", "host": ["{{base_url}}"], "path": ["goals", "{{goal_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"monthly_target\": 3000000\n}" }
+          }
+        },
+        {
+          "name": "Delete Goal",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/goals/{{goal_id}}", "host": ["{{base_url}}"], "path": ["goals", "{{goal_id}}"] }
+          }
+        },
+        {
+          "name": "Update Goal Progress",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/goals/{{goal_id}}/progress", "host": ["{{base_url}}"], "path": ["goals", "{{goal_id}}", "progress"] },
+            "body": { "mode": "raw", "raw": "{\n  \"current_amount\": 15000000\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Finances",
+      "item": [
+        {
+          "name": "Get Financial Summary",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/finances/summary?period=monthly",
+              "host": ["{{base_url}}"],
+              "path": ["finances", "summary"],
+              "query": [{ "key": "period", "value": "monthly" }]
+            }
+          }
+        },
+        {
+          "name": "Get Spending by Category",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/finances/spending?period=monthly",
+              "host": ["{{base_url}}"],
+              "path": ["finances", "spending"],
+              "query": [{ "key": "period", "value": "monthly" }]
+            }
+          }
+        },
+        {
+          "name": "Get Spending Trend",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/finances/trend?period=weekly",
+              "host": ["{{base_url}}"],
+              "path": ["finances", "trend"],
+              "query": [{ "key": "period", "value": "weekly" }]
+            }
+          }
+        },
+        {
+          "name": "Get Upcoming Bills",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/finances/upcoming-bills?page=1&per_page=20",
+              "host": ["{{base_url}}"],
+              "path": ["finances", "upcoming-bills"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Export Finances (CSV)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/finances/export?format=csv&period=monthly",
+              "host": ["{{base_url}}"],
+              "path": ["finances", "export"],
+              "query": [
+                { "key": "format", "value": "csv" },
+                { "key": "period", "value": "monthly" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Timeline",
+      "item": [
+        {
+          "name": "Get Timeline (date range)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/timeline?from=2026-09-01&to=2026-09-30&page=1&per_page=50",
+              "host": ["{{base_url}}"],
+              "path": ["timeline"],
+              "query": [
+                { "key": "from", "value": "2026-09-01" },
+                { "key": "to", "value": "2026-09-30" },
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Timeline (range shorthand)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/timeline?range=30d&page=1&per_page=50",
+              "host": ["{{base_url}}"],
+              "path": ["timeline"],
+              "query": [
+                { "key": "range", "value": "30d" },
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "50" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notifications",
+      "item": [
+        {
+          "name": "List Notifications",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/notifications?page=1&per_page=20&status=sent",
+              "host": ["{{base_url}}"],
+              "path": ["notifications"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" },
+                { "key": "status", "value": "sent" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Notification Stats",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/notifications/stats", "host": ["{{base_url}}"], "path": ["notifications", "stats"] }
+          }
+        },
+        {
+          "name": "Export Notifications (PDF)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/notifications/export?format=pdf&range=30d",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "export"],
+              "query": [
+                { "key": "format", "value": "pdf" },
+                { "key": "range", "value": "30d" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Notification",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/notifications/{{notification_id}}", "host": ["{{base_url}}"], "path": ["notifications", "{{notification_id}}"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Family",
+      "item": [
+        {
+          "name": "List Family Members",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/family/members", "host": ["{{base_url}}"], "path": ["family", "members"] }
+          }
+        },
+        {
+          "name": "Add Family Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.environment.set('family_member_id', pm.response.json().id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/family/members", "host": ["{{base_url}}"], "path": ["family", "members"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Budi Santoso\",\n  \"role\": \"spouse\",\n  \"relation_label\": \"Suami\",\n  \"date_of_birth\": \"1990-05-15\"\n}" }
+          }
+        },
+        {
+          "name": "Get Family Member",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/family/members/{{family_member_id}}", "host": ["{{base_url}}"], "path": ["family", "members", "{{family_member_id}}"] }
+          }
+        },
+        {
+          "name": "Update Family Member",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/family/members/{{family_member_id}}", "host": ["{{base_url}}"], "path": ["family", "members", "{{family_member_id}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"relation_label\": \"Suami tercinta\"\n}" }
+          }
+        },
+        {
+          "name": "Delete Family Member",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/family/members/{{family_member_id}}", "host": ["{{base_url}}"], "path": ["family", "members", "{{family_member_id}}"] }
+          }
+        },
+        {
+          "name": "List Family Reminders",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/family/reminders?page=1&per_page=20",
+              "host": ["{{base_url}}"],
+              "path": ["family", "reminders"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "20" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat",
+      "item": [
+        {
+          "name": "Get Chat Messages",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/chat/messages?page=1&per_page=30",
+              "host": ["{{base_url}}"],
+              "path": ["chat", "messages"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "per_page", "value": "30" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Send Chat Message",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/chat/messages", "host": ["{{base_url}}"], "path": ["chat", "messages"] },
+            "body": { "mode": "raw", "raw": "{\n  \"content\": \"Ingatkan saya bayar listrik setiap tanggal 20\"\n}" }
+          }
+        },
+        {
+          "name": "Delete All Chat Messages",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/chat/messages", "host": ["{{base_url}}"], "path": ["chat", "messages"] }
+          }
+        },
+        {
+          "name": "Get Chat Usage",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/chat/usage", "host": ["{{base_url}}"], "path": ["chat", "usage"] }
+          }
+        },
+        {
+          "name": "Get Detected Intents",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/chat/intents", "host": ["{{base_url}}"], "path": ["chat", "intents"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Account",
+      "item": [
+        {
+          "name": "Get Profile",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/account/profile", "host": ["{{base_url}}"], "path": ["account", "profile"] }
+          }
+        },
+        {
+          "name": "Update Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/account/profile", "host": ["{{base_url}}"], "path": ["account", "profile"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Updated Name\",\n  \"timezone\": \"Asia/Jakarta\"\n}" }
+          }
+        },
+        {
+          "name": "Upload Avatar",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{base_url}}/account/avatar", "host": ["{{base_url}}"], "path": ["account", "avatar"] },
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "file", "type": "file", "src": "" }]
+            }
+          }
+        },
+        {
+          "name": "Export Account Data",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/account/export", "host": ["{{base_url}}"], "path": ["account", "export"] }
+          }
+        },
+        {
+          "name": "Delete Account",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{base_url}}/account", "host": ["{{base_url}}"], "path": ["account"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Billing",
+      "item": [
+        {
+          "name": "Get Plan",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{base_url}}/billing/plan", "host": ["{{base_url}}"], "path": ["billing", "plan"] }
+          }
+        },
+        {
+          "name": "Create Checkout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{base_url}}/billing/checkout", "host": ["{{base_url}}"], "path": ["billing", "checkout"] },
+            "body": { "mode": "raw", "raw": "{\n  \"plan\": \"premium\"\n}" }
+          }
+        },
+        {
+          "name": "Billing Webhook (simulate)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Webhook-Signature", "value": "sha256=<computed-hmac>", "description": "HMAC-SHA256 of the raw request body" }
+            ],
+            "url": { "raw": "{{base_url}}/billing/webhook", "host": ["{{base_url}}"], "path": ["billing", "webhook"] },
+            "body": { "mode": "raw", "raw": "{\n  \"event\": \"payment.success\",\n  \"user_id\": \"{{user_id}}\",\n  \"plan\": \"premium\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "item": [
+        {
+          "name": "WhatsApp Inbound (simulate)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Webhook-Signature", "value": "sha256=<computed-hmac>", "description": "HMAC-SHA256 of the raw request body" }
+            ],
+            "url": {
+              "raw": "{{webhook_base_url}}/webhooks/whatsapp/meta",
+              "host": ["{{webhook_base_url}}"],
+              "path": ["webhooks", "whatsapp", "meta"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [{\n    \"id\": \"123456\",\n    \"changes\": [{\n      \"value\": {\n        \"messaging_product\": \"whatsapp\",\n        \"messages\": [{\n          \"id\": \"wamid.abc123\",\n          \"from\": \"+6281234567890\",\n          \"type\": \"text\",\n          \"text\": { \"body\": \"Ingatkan saya bayar BPJS tanggal 20 setiap bulan\" }\n        }]\n      }\n    }]\n  }]\n}"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "webhook_base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ]
+}

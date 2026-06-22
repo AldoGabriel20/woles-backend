@@ -1,0 +1,3478 @@
+openapi: 3.1.0
+info:
+  title: Woles API
+  description: |
+    Woles is a WhatsApp-first personal life administration assistant with a companion web dashboard.
+    All authenticated endpoints require a valid RS256 JWT in the `Authorization: Bearer <token>` header.
+    Access tokens expire in **15 minutes**. Use `POST /auth/refresh` to obtain a new pair.
+  version: 1.0.0
+  contact:
+    name: Woles Team
+    url: https://woles.id
+
+servers:
+  - url: https://api.woles.id/api/v1
+    description: Production
+  - url: http://localhost:8080/api/v1
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Authentication — register, login, OTP, 2FA, sessions, token refresh
+  - name: Reminders
+    description: Personal and family reminders with recurrence
+  - name: Documents
+    description: Important document vault with expiry tracking
+  - name: Subscriptions
+    description: Subscription and recurring bill tracking
+  - name: Goals
+    description: Financial savings goals
+  - name: Finances
+    description: Financial overview, spending analysis, and bill forecasting
+  - name: Timeline
+    description: Unified life timeline aggregating all upcoming events
+  - name: Notifications
+    description: Notification history, stats, and exports
+  - name: Family
+    description: Family member management and shared reminders (Advanced plan)
+  - name: Chat
+    description: AI Chat Hub for natural language commands (AI plan)
+  - name: Account
+    description: User profile, avatar, data export, and account deletion
+  - name: Billing
+    description: Subscription plan management and checkout
+  - name: Webhooks
+    description: Inbound webhook endpoints for external providers
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ─────────────────────────────────────────────
+    # Shared / utility schemas
+    # ─────────────────────────────────────────────
+    PaginationMeta:
+      type: object
+      required: [page, per_page, total, total_pages]
+      properties:
+        page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 20
+        total:
+          type: integer
+          example: 87
+        total_pages:
+          type: integer
+          example: 5
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: validation_error
+        message:
+          type: string
+          example: Request validation failed
+        details:
+          type: object
+          additionalProperties:
+            type: string
+
+    RateLimitErrorResponse:
+      type: object
+      required: [error, message, retry_after]
+      properties:
+        error:
+          type: string
+          example: rate_limit_exceeded
+        message:
+          type: string
+          example: Too many requests. Please try again later.
+        retry_after:
+          type: integer
+          example: 60
+
+    # ─────────────────────────────────────────────
+    # User / Identity
+    # ─────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          example: "+6281234567890"
+        name:
+          type: string
+          example: Aldo Gabriel
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        plan:
+          type: string
+          enum: [free, premium, advanced]
+        timezone:
+          type: string
+          example: Asia/Jakarta
+        totp_enabled:
+          type: boolean
+        account_status:
+          type: string
+          enum: [active, suspended, deleted]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TokenPair:
+      type: object
+      required: [access_token, token_type, expires_in]
+      properties:
+        access_token:
+          type: string
+          description: RS256 JWT, valid for 15 minutes
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Seconds until access token expires
+          example: 900
+
+    UserSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ip_address:
+          type: string
+          example: 203.0.113.45
+        user_agent:
+          type: string
+          example: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)
+        last_active_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    TOTPSetup:
+      type: object
+      required: [secret, qr_code_url]
+      properties:
+        secret:
+          type: string
+          description: Base32-encoded TOTP secret for manual entry
+          example: JBSWY3DPEHPK3PXP
+        qr_code_url:
+          type: string
+          format: uri
+          description: otpauth:// URL for QR code display
+
+    # ─────────────────────────────────────────────
+    # Auth request bodies
+    # ─────────────────────────────────────────────
+    RegisterRequest:
+      type: object
+      required: [email, password, name, timezone]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        name:
+          type: string
+          maxLength: 200
+        timezone:
+          type: string
+          example: Asia/Jakarta
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    OTPRequestBody:
+      type: object
+      required: [phone]
+      properties:
+        phone:
+          type: string
+          example: "+6281234567890"
+
+    OTPVerifyRequest:
+      type: object
+      required: [phone, otp]
+      properties:
+        phone:
+          type: string
+          example: "+6281234567890"
+        otp:
+          type: string
+          example: "123456"
+
+    ChangePasswordRequest:
+      type: object
+      required: [old_password, new_password]
+      properties:
+        old_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+
+    PasswordResetRequestBody:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+
+    PasswordResetConfirmRequest:
+      type: object
+      required: [token, new_password]
+      properties:
+        token:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+
+    Verify2FARequest:
+      type: object
+      required: [totp_code]
+      properties:
+        totp_code:
+          type: string
+          example: "123456"
+
+    Disable2FARequest:
+      type: object
+      required: [password]
+      properties:
+        password:
+          type: string
+
+    # ─────────────────────────────────────────────
+    # Reminder
+    # ─────────────────────────────────────────────
+    Reminder:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        family_member_id:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          example: Bayar BPJS
+        description:
+          type: string
+          nullable: true
+        category:
+          type: string
+          example: health
+        recurrence_type:
+          type: string
+          enum: [one_time, daily, weekly, monthly, yearly, custom_interval]
+        recurrence_rule:
+          type: object
+          nullable: true
+          description: JSONB rule (e.g. {"interval_days":14} for custom_interval)
+          additionalProperties: true
+        next_run_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [active, paused, archived]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateReminderRequest:
+      type: object
+      required: [title, recurrence_type, next_run_at]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        category:
+          type: string
+          example: health
+        recurrence_type:
+          type: string
+          enum: [one_time, daily, weekly, monthly, yearly, custom_interval]
+        recurrence_rule:
+          type: object
+          nullable: true
+          additionalProperties: true
+        next_run_at:
+          type: string
+          format: date-time
+        family_member_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    UpdateReminderRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          nullable: true
+        category:
+          type: string
+        recurrence_type:
+          type: string
+          enum: [one_time, daily, weekly, monthly, yearly, custom_interval]
+        recurrence_rule:
+          type: object
+          nullable: true
+          additionalProperties: true
+        next_run_at:
+          type: string
+          format: date-time
+
+    # ─────────────────────────────────────────────
+    # Document
+    # ─────────────────────────────────────────────
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        family_member_id:
+          type: string
+          format: uuid
+          nullable: true
+        title:
+          type: string
+          example: STNK Honda Civic 2023
+        vault_category:
+          type: string
+          enum: [vehicles, identity, insurance, financials, other]
+        storage_type:
+          type: string
+          enum: [physical, digital, scan_verified]
+        expiry_date:
+          type: string
+          format: date
+          nullable: true
+        file_url:
+          type: string
+          format: uri
+          nullable: true
+        file_size_bytes:
+          type: integer
+          nullable: true
+        file_mime_type:
+          type: string
+          nullable: true
+        reminder_offsets:
+          type: array
+          items:
+            type: integer
+          description: Days before expiry to send reminders (e.g. [30,7,1])
+          example: [30, 7, 1]
+        notes:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [active, archived]
+        days_until_expiry:
+          type: integer
+          nullable: true
+        expiry_risk:
+          type: string
+          enum: [safe, upcoming, urgent, expired]
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateDocumentRequest:
+      type: object
+      required: [title, vault_category, storage_type]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        vault_category:
+          type: string
+          enum: [vehicles, identity, insurance, financials, other]
+        storage_type:
+          type: string
+          enum: [physical, digital, scan_verified]
+        expiry_date:
+          type: string
+          format: date
+          nullable: true
+        reminder_offsets:
+          type: array
+          items:
+            type: integer
+          example: [30, 7, 1]
+        notes:
+          type: string
+          nullable: true
+        family_member_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    UpdateDocumentRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        vault_category:
+          type: string
+          enum: [vehicles, identity, insurance, financials, other]
+        storage_type:
+          type: string
+          enum: [physical, digital, scan_verified]
+        expiry_date:
+          type: string
+          format: date
+          nullable: true
+        reminder_offsets:
+          type: array
+          items:
+            type: integer
+        notes:
+          type: string
+          nullable: true
+
+    StorageUsage:
+      type: object
+      properties:
+        used_bytes:
+          type: integer
+          example: 5242880
+        used_mb:
+          type: number
+          format: float
+          example: 5.0
+        used_gb:
+          type: number
+          format: float
+          example: 0.005
+        file_count:
+          type: integer
+          example: 3
+
+    VaultHealth:
+      type: object
+      properties:
+        completeness_pct:
+          type: integer
+          example: 67
+        categories:
+          type: object
+          properties:
+            vehicles:
+              type: integer
+            identity:
+              type: integer
+            insurance:
+              type: integer
+            financials:
+              type: integer
+            other:
+              type: integer
+
+    # ─────────────────────────────────────────────
+    # Subscription
+    # ─────────────────────────────────────────────
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Netflix
+        amount:
+          type: number
+          format: float
+          example: 54000
+        currency:
+          type: string
+          example: IDR
+        billing_cycle:
+          type: string
+          enum: [monthly, yearly, custom]
+        next_billing_at:
+          type: string
+          format: date-time
+        category:
+          type: string
+          example: entertainment
+        status:
+          type: string
+          enum: [active, paused, archived]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateSubscriptionRequest:
+      type: object
+      required: [name, amount, currency, billing_cycle]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        amount:
+          type: number
+          format: float
+          minimum: 0
+        currency:
+          type: string
+          example: IDR
+        billing_cycle:
+          type: string
+          enum: [monthly, yearly, custom]
+        next_billing_at:
+          type: string
+          format: date-time
+          nullable: true
+        category:
+          type: string
+          example: entertainment
+
+    UpdateSubscriptionRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        amount:
+          type: number
+          format: float
+          minimum: 0
+        currency:
+          type: string
+        billing_cycle:
+          type: string
+          enum: [monthly, yearly, custom]
+        next_billing_at:
+          type: string
+          format: date-time
+          nullable: true
+        category:
+          type: string
+
+    MonthlyCostSummary:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              currency:
+                type: string
+                example: IDR
+              total_amount:
+                type: number
+                format: float
+                example: 392000
+              subscription_count:
+                type: integer
+                example: 7
+
+    # ─────────────────────────────────────────────
+    # Goal
+    # ─────────────────────────────────────────────
+    Goal:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: Emergency Fund
+        icon:
+          type: string
+          enum: [love, emergency, vehicle, home, travel, other]
+        target_amount:
+          type: number
+          format: float
+          example: 50000000
+        current_amount:
+          type: number
+          format: float
+          example: 12000000
+        currency:
+          type: string
+          example: IDR
+        monthly_target:
+          type: number
+          format: float
+          nullable: true
+        target_date:
+          type: string
+          format: date
+          nullable: true
+        status:
+          type: string
+          enum: [active, completed, archived]
+        progress_pct:
+          type: number
+          format: float
+          example: 24.0
+        remaining:
+          type: number
+          format: float
+          example: 38000000
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateGoalRequest:
+      type: object
+      required: [title, target_amount, currency]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        icon:
+          type: string
+          enum: [love, emergency, vehicle, home, travel, other]
+          default: other
+        target_amount:
+          type: number
+          format: float
+          minimum: 0.01
+        currency:
+          type: string
+          example: IDR
+        monthly_target:
+          type: number
+          format: float
+          nullable: true
+        target_date:
+          type: string
+          format: date
+          nullable: true
+
+    UpdateGoalRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        icon:
+          type: string
+          enum: [love, emergency, vehicle, home, travel, other]
+        target_amount:
+          type: number
+          format: float
+          minimum: 0.01
+        monthly_target:
+          type: number
+          format: float
+          nullable: true
+        target_date:
+          type: string
+          format: date
+          nullable: true
+
+    UpdateProgressRequest:
+      type: object
+      required: [current_amount]
+      properties:
+        current_amount:
+          type: number
+          format: float
+          minimum: 0
+
+    GoalWithTip:
+      allOf:
+        - $ref: '#/components/schemas/Goal'
+        - type: object
+          properties:
+            tip:
+              type: string
+              example: "You're 3 months ahead of schedule. Keep it up!"
+
+    # ─────────────────────────────────────────────
+    # Notification
+    # ─────────────────────────────────────────────
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        entity_type:
+          type: string
+          example: reminder
+        entity_id:
+          type: string
+          format: uuid
+        channel:
+          type: string
+          enum: [whatsapp, email]
+        message:
+          type: string
+        scheduled_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [scheduled, sending, sent, failed, canceled]
+        sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        retry_count:
+          type: integer
+          example: 0
+        idempotency_key:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    NotificationStats:
+      type: object
+      properties:
+        total_sent:
+          type: integer
+          example: 84
+        total_failed:
+          type: integer
+          example: 2
+        delivery_rate_pct:
+          type: number
+          format: float
+          example: 97.7
+        top_category:
+          type: string
+          example: vehicle
+
+    # ─────────────────────────────────────────────
+    # Timeline
+    # ─────────────────────────────────────────────
+    TimelineItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [reminder, document, subscription, goal]
+        title:
+          type: string
+          example: Netflix
+        due_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+          example: upcoming
+        entity_id:
+          type: string
+          format: uuid
+
+    # ─────────────────────────────────────────────
+    # Family
+    # ─────────────────────────────────────────────
+    FamilyMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Budi Santoso
+        role:
+          type: string
+          enum: [primary, spouse, parent, child, other]
+        relation_label:
+          type: string
+          example: Suami
+          nullable: true
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+        active_reminder_count:
+          type: integer
+          example: 3
+        created_at:
+          type: string
+          format: date-time
+
+    CreateFamilyMemberRequest:
+      type: object
+      required: [name, role]
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        role:
+          type: string
+          enum: [primary, spouse, parent, child, other]
+        relation_label:
+          type: string
+          nullable: true
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+
+    UpdateFamilyMemberRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        role:
+          type: string
+          enum: [primary, spouse, parent, child, other]
+        relation_label:
+          type: string
+          nullable: true
+        date_of_birth:
+          type: string
+          format: date
+          nullable: true
+
+    # ─────────────────────────────────────────────
+    # Chat
+    # ─────────────────────────────────────────────
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+          example: "Ingatkan saya bayar listrik setiap tanggal 20"
+        detected_intent:
+          type: object
+          nullable: true
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+
+    SendMessageRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          maxLength: 4000
+
+    ChatUsageResponse:
+      type: object
+      properties:
+        messages_used:
+          type: integer
+          example: 7
+        quota:
+          type: integer
+          example: 10
+        remaining:
+          type: integer
+          example: 3
+        plan_name:
+          type: string
+          example: free
+
+    DetectedIntent:
+      type: object
+      properties:
+        intent:
+          type: string
+          example: create_reminder
+        count:
+          type: integer
+          example: 4
+
+    # ─────────────────────────────────────────────
+    # Finances
+    # ─────────────────────────────────────────────
+    FinancialSummary:
+      type: object
+      properties:
+        period:
+          type: string
+          example: "2026-06"
+        total_expenses:
+          type: number
+          format: float
+          example: 12450000
+        income:
+          type: number
+          format: float
+          example: 25000000
+        savings:
+          type: number
+          format: float
+          example: 4500000
+        currency:
+          type: string
+          example: IDR
+        change_vs_last_period_pct:
+          type: number
+          format: float
+          example: -8.4
+
+    SpendingBreakdown:
+      type: object
+      properties:
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+                example: Household
+              amount:
+                type: number
+                format: float
+                example: 5600000
+              pct:
+                type: number
+                format: float
+                example: 45
+
+    SpendingTrend:
+      type: object
+      properties:
+        period:
+          type: string
+          example: "2026-06"
+        weeks:
+          type: array
+          items:
+            type: object
+            properties:
+              week:
+                type: integer
+                example: 1
+              total:
+                type: number
+                format: float
+                example: 3200000
+
+    UpcomingBill:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: Netflix
+        amount:
+          type: number
+          format: float
+          example: 54000
+        currency:
+          type: string
+          example: IDR
+        next_billing_at:
+          type: string
+          format: date-time
+        bill_status:
+          type: string
+          enum: [URGENT, PENDING, SCHEDULED]
+
+    # ─────────────────────────────────────────────
+    # Account
+    # ─────────────────────────────────────────────
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 200
+        timezone:
+          type: string
+          example: Asia/Jakarta
+
+    # ─────────────────────────────────────────────
+    # Billing
+    # ─────────────────────────────────────────────
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          enum: [free, premium, advanced]
+        price_idr:
+          type: number
+          format: float
+          example: 39000
+        reminder_limit:
+          type: integer
+          nullable: true
+          description: null means unlimited
+        document_limit:
+          type: integer
+          nullable: true
+        subscription_limit:
+          type: integer
+          nullable: true
+        goal_tracker:
+          type: boolean
+        family_account:
+          type: boolean
+        ai_chat:
+          type: boolean
+        ai_chat_quota:
+          type: integer
+          nullable: true
+
+    CheckoutRequest:
+      type: object
+      required: [plan]
+      properties:
+        plan:
+          type: string
+          enum: [premium, advanced]
+
+    CheckoutResponse:
+      type: object
+      properties:
+        checkout_url:
+          type: string
+          format: uri
+          example: https://payment.provider.id/checkout/abc123
+
+  responses:
+    Unauthorized:
+      description: Access token is missing, expired, or invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: unauthorized
+            message: Token is expired or invalid
+
+    Forbidden:
+      description: Insufficient permissions or plan
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found or not owned by the caller
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: not_found
+            message: Resource not found
+
+    UnprocessableEntity:
+      description: Request body failed validation
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          schema:
+            type: integer
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/RateLimitErrorResponse'
+
+    InternalServerError:
+      description: Unexpected server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  parameters:
+    pageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    perPageParam:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    sortParam:
+      name: sort
+      in: query
+      schema:
+        type: string
+    orderParam:
+      name: order
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+
+# =============================================================
+# Paths
+# =============================================================
+paths:
+
+  # ───────────────────────────────────────────────────────────
+  # Auth
+  # ───────────────────────────────────────────────────────────
+  /auth/register:
+    post:
+      operationId: authRegister
+      summary: Register with email and password
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tokens:
+                    $ref: '#/components/schemas/TokenPair'
+        "400":
+          description: Invalid request payload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/login:
+    post:
+      operationId: authLogin
+      summary: Login with email and password
+      description: |
+        Returns an access token and sets an HttpOnly `refresh_token` cookie.
+        After 5 consecutive failed attempts the account is locked for 15 minutes.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tokens:
+                    $ref: '#/components/schemas/TokenPair'
+        "400":
+          description: Invalid credentials or locked account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/logout:
+    post:
+      operationId: authLogout
+      summary: Logout current session
+      description: Revokes the current refresh token. The HttpOnly cookie is cleared.
+      tags: [Auth]
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Logged out successfully
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/refresh:
+    post:
+      operationId: authRefresh
+      summary: Refresh access token
+      description: |
+        Issues a new token pair using the HttpOnly `refresh_token` cookie.
+        The old refresh token is revoked immediately (rotation). Token reuse
+        triggers revocation of the entire token family.
+      tags: [Auth]
+      security: []
+      responses:
+        "200":
+          description: New token pair issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenPair'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/otp/request:
+    post:
+      operationId: authOTPRequest
+      summary: Request WhatsApp OTP
+      description: Sends a 6-digit OTP to the provided phone number via WhatsApp. Valid for 5 minutes.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPRequestBody'
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: OTP sent to WhatsApp
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/otp/verify:
+    post:
+      operationId: authOTPVerify
+      summary: Verify WhatsApp OTP
+      description: Validates the OTP and issues a token pair. Creates the user if first-time login.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OTPVerifyRequest'
+      responses:
+        "200":
+          description: OTP verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tokens:
+                    $ref: '#/components/schemas/TokenPair'
+        "400":
+          description: Invalid or expired OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/password/change:
+    post:
+      operationId: authPasswordChange
+      summary: Change password
+      description: Verifies current password then sets new password. Revokes all existing refresh tokens.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordRequest'
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password changed successfully
+        "400":
+          description: Old password incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/password/reset/request:
+    post:
+      operationId: authPasswordResetRequest
+      summary: Request password reset email
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequestBody'
+      responses:
+        "200":
+          description: If the email exists, a reset link was sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Reset link sent if account exists
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/password/reset/confirm:
+    post:
+      operationId: authPasswordResetConfirm
+      summary: Confirm password reset with token
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirmRequest'
+      responses:
+        "200":
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Password reset successfully
+        "400":
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/me:
+    get:
+      operationId: authGetMe
+      summary: Get current authenticated user
+      tags: [Auth]
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/2fa/enable:
+    post:
+      operationId: auth2FAEnable
+      summary: Enable two-factor authentication
+      description: Generates a TOTP secret. Returns the secret and QR code URL for app scanning.
+      tags: [Auth]
+      responses:
+        "200":
+          description: TOTP setup details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TOTPSetup'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/2fa/verify:
+    post:
+      operationId: auth2FAVerify
+      summary: Verify and activate two-factor authentication
+      description: Validates the TOTP code and activates 2FA on the account.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Verify2FARequest'
+      responses:
+        "200":
+          description: 2FA activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Two-factor authentication enabled
+        "400":
+          description: Invalid TOTP code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/2fa/disable:
+    post:
+      operationId: auth2FADisable
+      summary: Disable two-factor authentication
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Disable2FARequest'
+      responses:
+        "200":
+          description: 2FA disabled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Two-factor authentication disabled
+        "400":
+          description: Password incorrect
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/sessions:
+    get:
+      operationId: authGetSessions
+      summary: List active sessions
+      tags: [Auth]
+      responses:
+        "200":
+          description: Active sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserSession'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: authRevokeAllSessions
+      summary: Revoke all sessions
+      description: Logs out from all devices.
+      tags: [Auth]
+      responses:
+        "200":
+          description: All sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: All sessions revoked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /auth/sessions/{id}:
+    delete:
+      operationId: authRevokeSession
+      summary: Revoke a specific session
+      tags: [Auth]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Session revoked
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Reminders
+  # ───────────────────────────────────────────────────────────
+  /reminders:
+    post:
+      operationId: createReminder
+      summary: Create a reminder
+      tags: [Reminders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReminderRequest'
+      responses:
+        "201":
+          description: Reminder created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Plan limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      operationId: listReminders
+      summary: List reminders
+      tags: [Reminders]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, paused, archived]
+        - name: category
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/sortParam'
+        - $ref: '#/components/parameters/orderParam'
+      responses:
+        "200":
+          description: Paginated reminder list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Reminder'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /reminders/{id}:
+    get:
+      operationId: getReminderByID
+      summary: Get a reminder by ID
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reminder found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      operationId: updateReminder
+      summary: Update a reminder
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReminderRequest'
+      responses:
+        "200":
+          description: Reminder updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: deleteReminder
+      summary: Delete a reminder (soft delete)
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Reminder deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /reminders/{id}/pause:
+    post:
+      operationId: pauseReminder
+      summary: Pause a reminder
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reminder paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /reminders/{id}/resume:
+    post:
+      operationId: resumeReminder
+      summary: Resume a paused reminder
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Reminder resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /reminders/{id}/complete:
+    post:
+      operationId: completeReminderOccurrence
+      summary: Mark current occurrence as done and advance to next
+      tags: [Reminders]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Occurrence completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reminder'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Documents
+  # ───────────────────────────────────────────────────────────
+  /documents:
+    post:
+      operationId: createDocument
+      summary: Create a document record
+      tags: [Documents]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentRequest'
+      responses:
+        "201":
+          description: Document created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Plan limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      operationId: listDocuments
+      summary: List documents
+      tags: [Documents]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, archived]
+        - name: vault_category
+          in: query
+          schema:
+            type: string
+            enum: [vehicles, identity, insurance, financials, other]
+        - $ref: '#/components/parameters/sortParam'
+        - $ref: '#/components/parameters/orderParam'
+      responses:
+        "200":
+          description: Paginated document list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Document'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /documents/{id}:
+    get:
+      operationId: getDocumentByID
+      summary: Get a document by ID
+      tags: [Documents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Document found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      operationId: updateDocument
+      summary: Update a document
+      tags: [Documents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDocumentRequest'
+      responses:
+        "200":
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: deleteDocument
+      summary: Delete a document (soft delete)
+      tags: [Documents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Document deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /documents/{id}/file:
+    post:
+      operationId: uploadDocumentFile
+      summary: Upload a file for a document
+      description: |
+        Accepts `multipart/form-data`. Allowed MIME types: `application/pdf`, `image/jpeg`, `image/png`.
+        Maximum file size: **10 MB**. The file is stored in private object storage and served via signed URL.
+      tags: [Documents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF, JPEG, or PNG file, max 10 MB
+      responses:
+        "200":
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        "400":
+          description: Invalid file type or size exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: deleteDocumentFile
+      summary: Delete the uploaded file from a document
+      tags: [Documents]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: File deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /documents/storage/usage:
+    get:
+      operationId: getDocumentStorageUsage
+      summary: Get total storage usage for the user
+      tags: [Documents]
+      responses:
+        "200":
+          description: Storage usage summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageUsage'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /documents/vault/health:
+    get:
+      operationId: getVaultHealth
+      summary: Get document vault completeness score
+      description: Returns document count per category and an overall completeness percentage.
+      tags: [Documents]
+      responses:
+        "200":
+          description: Vault health score
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VaultHealth'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Subscriptions
+  # ───────────────────────────────────────────────────────────
+  /subscriptions:
+    post:
+      operationId: createSubscription
+      summary: Create a subscription
+      tags: [Subscriptions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriptionRequest'
+      responses:
+        "201":
+          description: Subscription created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Plan limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      operationId: listSubscriptions
+      summary: List subscriptions
+      tags: [Subscriptions]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, paused, archived]
+        - $ref: '#/components/parameters/sortParam'
+        - $ref: '#/components/parameters/orderParam'
+      responses:
+        "200":
+          description: Paginated subscription list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subscription'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscriptions/{id}:
+    get:
+      operationId: getSubscriptionByID
+      summary: Get a subscription by ID
+      tags: [Subscriptions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Subscription found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      operationId: updateSubscription
+      summary: Update a subscription
+      tags: [Subscriptions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubscriptionRequest'
+      responses:
+        "200":
+          description: Subscription updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: deleteSubscription
+      summary: Delete a subscription (soft delete)
+      tags: [Subscriptions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Subscription deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /subscriptions/{id}/archive:
+    post:
+      operationId: archiveSubscription
+      summary: Archive a subscription
+      tags: [Subscriptions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Subscription archived
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Goals
+  # ───────────────────────────────────────────────────────────
+  /goals:
+    post:
+      operationId: createGoal
+      summary: Create a savings goal
+      description: Requires Premium or Advanced plan.
+      tags: [Goals]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGoalRequest'
+      responses:
+        "201":
+          description: Goal created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Premium plan required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      operationId: listGoals
+      summary: List goals
+      tags: [Goals]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, completed, archived]
+      responses:
+        "200":
+          description: Paginated goal list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Goal'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /goals/history:
+    get:
+      operationId: getGoalHistory
+      summary: Get completed and archived goals
+      tags: [Goals]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+      responses:
+        "200":
+          description: Goal history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Goal'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /goals/{id}:
+    get:
+      operationId: getGoalByID
+      summary: Get a goal by ID
+      tags: [Goals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Goal found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      operationId: updateGoal
+      summary: Update a goal
+      tags: [Goals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGoalRequest'
+      responses:
+        "200":
+          description: Goal updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: deleteGoal
+      summary: Delete a goal (soft delete)
+      tags: [Goals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Goal deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /goals/{id}/progress:
+    post:
+      operationId: updateGoalProgress
+      summary: Update goal progress (current amount)
+      tags: [Goals]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProgressRequest'
+      responses:
+        "200":
+          description: Progress updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Goal'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Financial Overview
+  # ───────────────────────────────────────────────────────────
+  /finances/summary:
+    get:
+      operationId: getFinancialSummary
+      summary: Get financial summary for a period
+      tags: [Finances]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            example: "2026-06"
+            description: "Use 'monthly' for current month or YYYY-MM for a specific month"
+      responses:
+        "200":
+          description: Financial summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinancialSummary'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /finances/spending:
+    get:
+      operationId: getSpendingByCategory
+      summary: Get spending breakdown by category
+      tags: [Finances]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            example: "2026-06"
+      responses:
+        "200":
+          description: Spending breakdown
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpendingBreakdown'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /finances/trend:
+    get:
+      operationId: getSpendingTrend
+      summary: Get spending trend (weekly buckets)
+      tags: [Finances]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [weekly]
+            default: weekly
+      responses:
+        "200":
+          description: Weekly spending trend
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpendingTrend'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /finances/upcoming-bills:
+    get:
+      operationId: getUpcomingBills
+      summary: Get upcoming bills in the next 30 days
+      tags: [Finances]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+      responses:
+        "200":
+          description: Upcoming bills
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UpcomingBill'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /finances/export:
+    get:
+      operationId: exportFinances
+      summary: Export financial data as CSV
+      tags: [Finances]
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [csv]
+        - name: period
+          in: query
+          schema:
+            type: string
+            example: "2026-06"
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Timeline
+  # ───────────────────────────────────────────────────────────
+  /timeline:
+    get:
+      operationId: getTimeline
+      summary: Get unified life timeline
+      description: |
+        Aggregates upcoming reminders, document expiry dates, subscription billing dates,
+        and goal target dates into a single chronological timeline.
+        Provide either `from`+`to` date params or a `range` shorthand.
+      tags: [Timeline]
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+            example: "2026-09-01"
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+            example: "2026-09-30"
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [7d, 30d, 90d, this_month, next_month]
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+      responses:
+        "200":
+          description: Timeline items
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TimelineItem'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "429":
+          $ref: '#/components/responses/TooManyRequests'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Notifications
+  # ───────────────────────────────────────────────────────────
+  /notifications:
+    get:
+      operationId: listNotifications
+      summary: List notification history
+      tags: [Notifications]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+        - name: category
+          in: query
+          schema:
+            type: string
+            example: vehicle
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [scheduled, sending, sent, failed, canceled]
+      responses:
+        "200":
+          description: Notification history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /notifications/stats:
+    get:
+      operationId: getNotificationStats
+      summary: Get notification delivery statistics
+      tags: [Notifications]
+      responses:
+        "200":
+          description: Notification stats
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationStats'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /notifications/export:
+    get:
+      operationId: exportNotifications
+      summary: Export notification history as PDF or CSV
+      tags: [Notifications]
+      parameters:
+        - name: format
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [pdf, csv]
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [7d, 30d, 90d]
+      responses:
+        "200":
+          description: File download
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+            text/csv:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /notifications/{id}:
+    get:
+      operationId: getNotificationByID
+      summary: Get a notification by ID
+      tags: [Notifications]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Notification found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Family
+  # ───────────────────────────────────────────────────────────
+  /family/members:
+    get:
+      operationId: listFamilyMembers
+      summary: List family members
+      description: Requires Advanced plan.
+      tags: [Family]
+      responses:
+        "200":
+          description: Family members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FamilyMember'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Advanced plan required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      operationId: createFamilyMember
+      summary: Add a family member
+      description: Requires Advanced plan. Maximum 10 members per user.
+      tags: [Family]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFamilyMemberRequest'
+      responses:
+        "201":
+          description: Family member added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyMember'
+        "400":
+          description: Maximum member limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Advanced plan required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /family/members/{id}:
+    get:
+      operationId: getFamilyMemberByID
+      summary: Get a family member by ID
+      tags: [Family]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Family member found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyMember'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Advanced plan required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      operationId: updateFamilyMember
+      summary: Update a family member
+      tags: [Family]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFamilyMemberRequest'
+      responses:
+        "200":
+          description: Family member updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FamilyMember'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Advanced plan required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: deleteFamilyMember
+      summary: Delete a family member (soft delete)
+      tags: [Family]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Family member deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Advanced plan required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /family/reminders:
+    get:
+      operationId: listFamilyReminders
+      summary: List shared reminders across all family members
+      description: Requires Advanced plan.
+      tags: [Family]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+      responses:
+        "200":
+          description: Family reminders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Reminder'
+                        - type: object
+                          properties:
+                            owner_name:
+                              type: string
+                            owner_avatar:
+                              type: string
+                              format: uri
+                              nullable: true
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Advanced plan required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Chat
+  # ───────────────────────────────────────────────────────────
+  /chat/messages:
+    get:
+      operationId: getChatMessages
+      summary: List chat messages
+      tags: [Chat]
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/perPageParam'
+      responses:
+        "200":
+          description: Chat messages
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatMessage'
+                  pagination:
+                    $ref: '#/components/schemas/PaginationMeta'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      operationId: sendChatMessage
+      summary: Send a message to the AI Chat Hub
+      description: |
+        Processes the natural language message and returns an assistant response.
+        Free plan is limited to 10 messages per month.
+      tags: [Chat]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessageRequest'
+      responses:
+        "201":
+          description: Message processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user_message:
+                    $ref: '#/components/schemas/ChatMessage'
+                  assistant_message:
+                    $ref: '#/components/schemas/ChatMessage'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: Monthly quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: quota_exceeded
+                message: "Free plan limit reached. Upgrade to continue chatting."
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      operationId: deleteAllChatMessages
+      summary: Delete all chat messages (hard delete)
+      tags: [Chat]
+      responses:
+        "204":
+          description: All messages deleted
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /chat/usage:
+    get:
+      operationId: getChatUsage
+      summary: Get monthly chat usage
+      tags: [Chat]
+      responses:
+        "200":
+          description: Chat usage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatUsageResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /chat/intents:
+    get:
+      operationId: getChatIntents
+      summary: Get top detected intents from recent messages
+      tags: [Chat]
+      responses:
+        "200":
+          description: Top intents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  intents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DetectedIntent'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Account
+  # ───────────────────────────────────────────────────────────
+  /account/profile:
+    get:
+      operationId: getProfile
+      summary: Get user profile
+      tags: [Account]
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      operationId: updateProfile
+      summary: Update user profile
+      tags: [Account]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        "200":
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /account/avatar:
+    post:
+      operationId: uploadAvatar
+      summary: Upload user avatar
+      tags: [Account]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: JPEG or PNG, max 2 MB
+      responses:
+        "200":
+          description: Avatar uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatar_url:
+                    type: string
+                    format: uri
+        "400":
+          description: Invalid file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /account/export:
+    get:
+      operationId: exportAccountData
+      summary: Export all user data (GDPR)
+      description: Generates a downloadable archive of all user data.
+      tags: [Account]
+      responses:
+        "200":
+          description: Data export file
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /account:
+    delete:
+      operationId: deleteAccount
+      summary: Delete account (hard delete after 30-day grace period)
+      tags: [Account]
+      responses:
+        "200":
+          description: Account deletion scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: Account scheduled for deletion in 30 days.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ───────────────────────────────────────────────────────────
+  # Billing
+  # ───────────────────────────────────────────────────────────
+  /billing/plan:
+    get:
+      operationId: getBillingPlan
+      summary: Get current plan details
+      tags: [Billing]
+      responses:
+        "200":
+          description: Current plan
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /billing/checkout:
+    post:
+      operationId: createCheckout
+      summary: Create a payment checkout session
+      tags: [Billing]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutRequest'
+      responses:
+        "200":
+          description: Checkout URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /billing/webhook:
+    post:
+      operationId: billingWebhook
+      summary: Payment provider webhook
+      description: |
+        Receives payment lifecycle events from the payment provider.
+        The `X-Webhook-Signature` header must contain a valid HMAC-SHA256
+        signature computed from the raw request body using the provider secret.
+      tags: [Billing]
+      security: []
+      parameters:
+        - name: X-Webhook-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: HMAC-SHA256 signature of the raw request body
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Provider-specific event payload
+              additionalProperties: true
+      responses:
+        "200":
+          description: Webhook received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+        "401":
+          description: Invalid signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+# =============================================================
+# Webhooks (external — not under /api/v1/ prefix)
+# =============================================================
+x-webhooks:
+  whatsappWebhook:
+    post:
+      operationId: whatsappWebhook
+      summary: Receive inbound WhatsApp message
+      description: |
+        Called by the WhatsApp cloud provider when a user sends a message.
+        The provider signature in `X-Webhook-Signature` is verified before processing.
+        The response is returned immediately (HTTP 200) and processing continues asynchronously.
+        **Path:** `POST /webhooks/whatsapp/{provider}`
+      tags: [Webhooks]
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            example: meta
+          description: WhatsApp provider identifier (e.g. meta, twilio)
+        - name: X-Webhook-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+          description: HMAC-SHA256 signature provided by the WhatsApp provider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Provider-specific inbound message payload
+              additionalProperties: true
+      responses:
+        "200":
+          description: Webhook accepted for async processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+        "401":
+          description: Invalid or missing signature
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
