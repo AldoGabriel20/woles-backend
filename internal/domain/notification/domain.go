@@ -37,21 +37,21 @@ const (
 
 // Notification is the core notification delivery entity.
 type Notification struct {
-	ID                string
-	UserID            string
-	EntityType        NotificationEntityType
-	EntityID          string
-	OccurrenceID      *string
-	Channel           NotificationChannel
-	ScheduledAt       time.Time
-	SentAt            *time.Time
-	Status            NotificationStatus
-	IdempotencyKey    string
-	ProviderMessageID *string
-	FailureReason     *string
-	RetryCount        int
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                string                 `json:"id"`
+	UserID            string                 `json:"user_id"`
+	EntityType        NotificationEntityType `json:"entity_type"`
+	EntityID          string                 `json:"entity_id"`
+	OccurrenceID      *string                `json:"occurrence_id,omitempty"`
+	Channel           NotificationChannel    `json:"channel"`
+	ScheduledAt       time.Time              `json:"scheduled_at"`
+	SentAt            *time.Time             `json:"sent_at,omitempty"`
+	Status            NotificationStatus     `json:"status"`
+	IdempotencyKey    string                 `json:"idempotency_key"`
+	ProviderMessageID *string                `json:"provider_message_id,omitempty"`
+	FailureReason     *string                `json:"failure_reason,omitempty"`
+	RetryCount        int                    `json:"retry_count"`
+	CreatedAt         time.Time              `json:"created_at"`
+	UpdatedAt         time.Time              `json:"updated_at"`
 }
 
 // BuildIdempotencyKey returns the canonical idempotency key for this notification.

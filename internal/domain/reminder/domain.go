@@ -52,19 +52,19 @@ type recurrenceRule struct {
 
 // Reminder is the core reminder entity.
 type Reminder struct {
-	ID             string
-	UserID         string
-	Title          string
-	Category       ReminderCategory
-	RecurrenceType RecurrenceType
-	RecurrenceRule json.RawMessage
-	NextRunAt      time.Time
-	Timezone       string
-	Status         ReminderStatus
-	Source         ReminderSource
-	OriginalText   *string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID             string           `json:"id"`
+	UserID         string           `json:"user_id"`
+	Title          string           `json:"title"`
+	Category       ReminderCategory `json:"category"`
+	RecurrenceType RecurrenceType   `json:"recurrence_type"`
+	RecurrenceRule json.RawMessage  `json:"recurrence_rule,omitempty"`
+	NextRunAt      time.Time        `json:"next_run_at"`
+	Timezone       string           `json:"timezone"`
+	Status         ReminderStatus   `json:"status"`
+	Source         ReminderSource   `json:"source"`
+	OriginalText   *string          `json:"original_text,omitempty"`
+	CreatedAt      time.Time        `json:"created_at"`
+	UpdatedAt      time.Time        `json:"updated_at"`
 }
 
 // CalculateNextRunAt computes the next scheduled time after `from` based on the
@@ -116,11 +116,11 @@ const (
 
 // ReminderOccurrence represents one scheduled firing of a reminder.
 type ReminderOccurrence struct {
-	ID          string
-	ReminderID  string
-	UserID      string
-	ScheduledAt time.Time
-	CompletedAt *time.Time
-	Status      OccurrenceStatus
-	CreatedAt   time.Time
+	ID          string           `json:"id"`
+	ReminderID  string           `json:"reminder_id"`
+	UserID      string           `json:"user_id"`
+	ScheduledAt time.Time        `json:"scheduled_at"`
+	CompletedAt *time.Time       `json:"completed_at,omitempty"`
+	Status      OccurrenceStatus `json:"status"`
+	CreatedAt   time.Time        `json:"created_at"`
 }

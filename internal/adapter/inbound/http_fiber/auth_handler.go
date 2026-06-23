@@ -3,6 +3,7 @@ package http_fiber
 
 import (
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/woles/woles-backend/internal/adapter/inbound/http_fiber/middleware"
@@ -19,14 +20,22 @@ func RegisterAuthRoutes(router fiber.Router, svc *Services) {
 
 	auth := router.Group("/auth")
 
+	// Rate limiter for sensitive public auth endpoints: 10 requests per minute per IP.
+	var authRateLimit fiber.Handler
+	if svc.RateLimiter != nil {
+		authRateLimit = middleware.RateLimitMiddleware(svc.RateLimiter, 10, time.Minute, "")
+	} else {
+		authRateLimit = func(c *fiber.Ctx) error { return c.Next() }
+	}
+
 	// Public — no JWT.
-	auth.Post("/register", h.register)
-	auth.Post("/login", h.login)
-	auth.Post("/refresh", h.refreshToken)
-	auth.Post("/otp/request", h.requestOTP)
-	auth.Post("/otp/verify", h.verifyOTP)
-	auth.Post("/password/reset/request", h.passwordResetRequest)
-	auth.Post("/password/reset/confirm", h.passwordResetConfirm)
+	auth.Post("/register", authRateLimit, h.register)
+	auth.Post("/login", authRateLimit, h.login)
+	auth.Post("/refresh", authRateLimit, h.refreshToken)
+	auth.Post("/otp/request", authRateLimit, h.requestOTP)
+	auth.Post("/otp/verify", authRateLimit, h.verifyOTP)
+	auth.Post("/password/reset/request", authRateLimit, h.passwordResetRequest)
+	auth.Post("/password/reset/confirm", authRateLimit, h.passwordResetConfirm)
 
 	// Protected — require JWT.
 	prot := auth.Use(middleware.JWTMiddleware())

@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/woles/woles-backend/internal/adapter/outbound/postgres"
 	appfamily "github.com/woles/woles-backend/internal/application/family"
+	appgoal "github.com/woles/woles-backend/internal/application/goal"
 	appidentity "github.com/woles/woles-backend/internal/application/identity"
 )
 
@@ -56,15 +57,35 @@ func mapServiceError(c *fiber.Ctx, err error) error {
 		return sendError(c, fiber.StatusUnauthorized, "token_reused", err.Error())
 	case errors.Is(err, appidentity.ErrTokenInvalid):
 		return sendError(c, fiber.StatusUnauthorized, "token_invalid", err.Error())
+	case errors.Is(err, appidentity.Err2FANotEnabled):
+		return sendError(c, fiber.StatusBadRequest, "setup_required", err.Error())
 	case errors.Is(err, appfamily.ErrPlanGate):
 		return sendError(c, fiber.StatusForbidden, "plan_required", err.Error())
 	case errors.Is(err, appfamily.ErrMemberLimit):
 		return sendError(c, fiber.StatusBadRequest, "member_limit", err.Error())
+	case errors.Is(err, appgoal.ErrPlanRequired):
+		return sendError(c, fiber.StatusForbidden, "plan_required", err.Error())
+	case errors.Is(err, appgoal.ErrNotFound):
+		return sendError(c, fiber.StatusNotFound, "not_found", "Resource not found")
 	default:
 		// Check for plan_limit and quota errors by message
 		msg := err.Error()
-		if contains(msg, "plan limit") || contains(msg, "quota_exceeded") || contains(msg, "quota exceeded") {
+		if contains(msg, "plan limit") || contains(msg, "quota_exceeded") || contains(msg, "quota exceeded") ||
+			contains(msg, "limit reached") || contains(msg, "reached for your plan") ||
+			contains(msg, "requires a premium or advanced plan") {
 			return sendError(c, fiber.StatusForbidden, "plan_limit", msg)
+		}
+		if contains(msg, "invalid input") {
+			return sendError(c, fiber.StatusUnprocessableEntity, "validation_error", msg)
+		}
+		if contains(msg, "unsupported file type") {
+			return sendError(c, fiber.StatusUnsupportedMediaType, "unsupported_media_type", msg)
+		}
+		if contains(msg, "file exceeds") {
+			return sendError(c, fiber.StatusRequestEntityTooLarge, "file_too_large", msg)
+		}
+		if contains(msg, "forbidden") || contains(msg, "access denied") {
+			return sendError(c, fiber.StatusForbidden, "forbidden", "Access denied")
 		}
 		if contains(msg, "not found") || contains(msg, "no rows") {
 			return sendError(c, fiber.StatusNotFound, "not_found", "Resource not found")

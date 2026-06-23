@@ -27,12 +27,12 @@ func RegisterReminderRoutes(router fiber.Router, svc *Services) {
 }
 
 type createReminderBody struct {
-	Title          string `json:"title"`
-	Category       string `json:"category"`
-	RecurrenceType string `json:"recurrence_type"`
-	RecurrenceRule []byte `json:"recurrence_rule"`
-	NextRunAt      string `json:"next_run_at"`
-	Timezone       string `json:"timezone"`
+	Title          string          `json:"title"`
+	Category       string          `json:"category"`
+	RecurrenceType string          `json:"recurrence_type"`
+	RecurrenceRule json.RawMessage `json:"recurrence_rule"`
+	NextRunAt      string          `json:"next_run_at"`
+	Timezone       string          `json:"timezone"`
 }
 
 func (h *reminderHandler) create(c *fiber.Ctx) error {
@@ -129,12 +129,12 @@ func (h *reminderHandler) get(c *fiber.Ctx) error {
 }
 
 type updateReminderBody struct {
-	Title          *string `json:"title"`
-	Category       *string `json:"category"`
-	RecurrenceType *string `json:"recurrence_type"`
-	RecurrenceRule []byte  `json:"recurrence_rule"`
-	NextRunAt      *string `json:"next_run_at"`
-	Timezone       *string `json:"timezone"`
+	Title          *string         `json:"title"`
+	Category       *string         `json:"category"`
+	RecurrenceType *string         `json:"recurrence_type"`
+	RecurrenceRule json.RawMessage `json:"recurrence_rule"`
+	NextRunAt      *string         `json:"next_run_at"`
+	Timezone       *string         `json:"timezone"`
 }
 
 func (h *reminderHandler) update(c *fiber.Ctx) error {

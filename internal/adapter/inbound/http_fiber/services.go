@@ -10,6 +10,7 @@ import (
 	appreminder "github.com/woles/woles-backend/internal/application/reminder"
 	appsubscription "github.com/woles/woles-backend/internal/application/subscription"
 	apptimeline "github.com/woles/woles-backend/internal/application/timeline"
+	portcache "github.com/woles/woles-backend/internal/port/outbound/cache"
 	"github.com/woles/woles-backend/internal/port/outbound/database"
 	"github.com/woles/woles-backend/internal/port/outbound/storage"
 )
@@ -30,4 +31,7 @@ type Services struct {
 	Users       database.UserRepository
 	UsageLimits database.UsageLimitRepository
 	FileStore   storage.FileStore
+
+	// RateLimiter is used by auth endpoints to enforce per-IP sliding-window limits.
+	RateLimiter portcache.RateLimiter
 }

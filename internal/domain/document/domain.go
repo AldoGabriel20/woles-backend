@@ -53,22 +53,22 @@ const (
 
 // Document is the core document vault entity.
 type Document struct {
-	ID              string
-	UserID          string
-	FamilyMemberID  *string
-	DocumentType    DocumentType
-	VaultCategory   VaultCategory
-	Title           string
-	ExpiryDate      *time.Time
-	ReminderOffsets []int
-	Notes           *string
-	StorageType     StorageType
-	FileURL         *string
-	FileSizeBytes   *int64
-	FileMIMEType    *string
-	Status          DocumentStatus
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID              string         `json:"id"`
+	UserID          string         `json:"user_id"`
+	FamilyMemberID  *string        `json:"family_member_id,omitempty"`
+	DocumentType    DocumentType   `json:"document_type"`
+	VaultCategory   VaultCategory  `json:"vault_category"`
+	Title           string         `json:"title"`
+	ExpiryDate      *time.Time     `json:"expiry_date,omitempty"`
+	ReminderOffsets []int          `json:"reminder_offsets,omitempty"`
+	Notes           *string        `json:"notes,omitempty"`
+	StorageType     StorageType    `json:"storage_type"`
+	FileURL         *string        `json:"file_url,omitempty"`
+	FileSizeBytes   *int64         `json:"file_size_bytes,omitempty"`
+	FileMIMEType    *string        `json:"file_mime_type,omitempty"`
+	Status          DocumentStatus `json:"status"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
 // DaysUntilExpiry returns the number of calendar days between today and

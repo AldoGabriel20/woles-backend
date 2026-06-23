@@ -25,18 +25,18 @@ const (
 
 // Goal is the core financial goal entity.
 type Goal struct {
-	ID            string
-	UserID        string
-	Title         string
-	Icon          *GoalIcon
-	TargetAmount  float64
-	CurrentAmount float64
-	MonthlyTarget *float64
-	Currency      string
-	TargetDate    *time.Time
-	Status        GoalStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            string     `json:"id"`
+	UserID        string     `json:"user_id"`
+	Title         string     `json:"title"`
+	Icon          *GoalIcon  `json:"icon,omitempty"`
+	TargetAmount  float64    `json:"target_amount"`
+	CurrentAmount float64    `json:"current_amount"`
+	MonthlyTarget *float64   `json:"monthly_target,omitempty"`
+	Currency      string     `json:"currency"`
+	TargetDate    *time.Time `json:"target_date,omitempty"`
+	Status        GoalStatus `json:"status"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
 // ProgressPercent returns what percentage of the target has been saved.

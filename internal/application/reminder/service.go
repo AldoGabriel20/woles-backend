@@ -125,6 +125,9 @@ func (s *Service) CreateReminder(ctx context.Context, userID string, req CreateR
 	if category == "" {
 		category = domainreminder.CategoryCustom
 	}
+	if !validCategory(category) {
+		return nil, fmt.Errorf("%w: unknown category %q", ErrInvalidInput, category)
+	}
 
 	now := time.Now().UTC()
 	rem := &domainreminder.Reminder{
@@ -480,6 +483,18 @@ func validRecurrenceType(t domainreminder.RecurrenceType) bool {
 		domainreminder.RecurrenceMonthly,
 		domainreminder.RecurrenceYearly,
 		domainreminder.RecurrenceCustomInterval:
+		return true
+	}
+	return false
+}
+
+// validCategory returns true when c is one of the defined enum values.
+func validCategory(c domainreminder.ReminderCategory) bool {
+	switch c {
+	case domainreminder.CategoryBill,
+		domainreminder.CategoryVehicle,
+		domainreminder.CategoryDocument,
+		domainreminder.CategoryCustom:
 		return true
 	}
 	return false

@@ -47,6 +47,7 @@ var (
 	ErrTokenInvalid       = errors.New("token is invalid")
 	ErrNotFound           = errors.New("not found")
 	ErrForbidden          = errors.New("forbidden")
+	Err2FANotEnabled      = errors.New("2FA not set up — call Enable2FA first")
 )
 
 // ─── Value objects ────────────────────────────────────────────────────────────
@@ -431,7 +432,7 @@ func (s *Service) Verify2FA(ctx context.Context, userID, totpCode string) error 
 		return ErrNotFound
 	}
 	if user.TOTPSecret == nil {
-		return errors.New("2FA not set up — call Enable2FA first")
+		return Err2FANotEnabled
 	}
 
 	encrypted, err := base64.StdEncoding.DecodeString(*user.TOTPSecret)
@@ -718,6 +719,7 @@ func (s *Service) SoftDeleteUser(ctx context.Context, userID string) error {
 	}
 	_ = s.refreshTokens.RevokeAllForUser(ctx, userID)
 	_ = s.sessions.DeleteAllForUser(ctx, userID)
+	s.writeAudit(ctx, userID, "user", "account_deleted", userID, "", "")
 	return nil
 }
 

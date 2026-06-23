@@ -15,12 +15,12 @@ const (
 
 // FamilyMember represents a person managed under a primary user account.
 type FamilyMember struct {
-	ID            string
-	OwnerUserID   string
-	Name          string
-	Role          MemberRole
-	RelationLabel *string
-	AvatarURL     *string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            string     `json:"id"`
+	OwnerUserID   string     `json:"owner_user_id"`
+	Name          string     `json:"name"`
+	Role          MemberRole `json:"role"`
+	RelationLabel *string    `json:"relation_label,omitempty"`
+	AvatarURL     *string    `json:"avatar_url,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
 }

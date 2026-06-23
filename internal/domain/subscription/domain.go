@@ -32,15 +32,15 @@ const (
 
 // Subscription is the core subscription tracking entity.
 type Subscription struct {
-	ID            string
-	UserID        string
-	Name          string
-	Amount        float64
-	Currency      string
-	BillingCycle  BillingCycle
-	NextBillingAt time.Time
-	Category      SubscriptionCategory
-	Status        SubscriptionStatus
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID            string               `json:"id"`
+	UserID        string               `json:"user_id"`
+	Name          string               `json:"name"`
+	Amount        float64              `json:"amount"`
+	Currency      string               `json:"currency"`
+	BillingCycle  BillingCycle         `json:"billing_cycle"`
+	NextBillingAt time.Time            `json:"next_billing_at"`
+	Category      SubscriptionCategory `json:"category"`
+	Status        SubscriptionStatus   `json:"status"`
+	CreatedAt     time.Time            `json:"created_at"`
+	UpdatedAt     time.Time            `json:"updated_at"`
 }

@@ -63,14 +63,14 @@ type RefreshToken struct {
 
 // UserSession is the database representation of an active user session.
 type UserSession struct {
-	ID             string
-	UserID         string
-	RefreshTokenID string
-	DeviceName     *string
-	IPAddress      *string
-	UserAgent      *string
-	LastActiveAt   time.Time
-	CreatedAt      time.Time
+	ID             string    `json:"id"`
+	UserID         string    `json:"user_id"`
+	RefreshTokenID string    `json:"refresh_token_id"`
+	DeviceName     *string   `json:"device_name,omitempty"`
+	IPAddress      *string   `json:"ip_address,omitempty"`
+	UserAgent      *string   `json:"user_agent,omitempty"`
+	LastActiveAt   time.Time `json:"last_active_at"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 // InboundMessage is the database representation of an inbound WhatsApp message.
@@ -88,22 +88,22 @@ type InboundMessage struct {
 
 // StorageUsage is returned by DocumentRepository.GetStorageUsage.
 type StorageUsage struct {
-	UsedBytes int64
-	UsedMB    float64
-	UsedGB    float64
-	FileCount int
+	UsedBytes int64   `json:"used_bytes"`
+	UsedMB    float64 `json:"used_mb"`
+	UsedGB    float64 `json:"used_gb"`
+	FileCount int     `json:"file_count"`
 }
 
 // VaultCategoryCount holds the document count for one vault category.
 type VaultCategoryCount struct {
-	Category document.VaultCategory
-	Count    int
+	Category document.VaultCategory `json:"category"`
+	Count    int                    `json:"count"`
 }
 
 // VaultHealth is returned by DocumentRepository.GetVaultHealth.
 type VaultHealth struct {
-	Categories        []VaultCategoryCount
-	CompletenessScore int // 0–100
+	Categories        []VaultCategoryCount `json:"categories"`
+	CompletenessScore int                  `json:"completeness_score"`
 }
 
 // MonthlyCostItem is one row in a monthly cost summary.
@@ -115,20 +115,20 @@ type MonthlyCostItem struct {
 
 // NotificationStats is returned by NotificationRepository.GetStats.
 type NotificationStats struct {
-	TotalSent       int
-	TotalFailed     int
-	DeliveryRatePct float64
-	TopCategory     string
+	TotalSent       int     `json:"total_sent"`
+	TotalFailed     int     `json:"total_failed"`
+	DeliveryRatePct float64 `json:"delivery_rate_pct"`
+	TopCategory     string  `json:"top_category"`
 }
 
 // TimelineItem is the normalised result returned by TimelineRepository.
 type TimelineItem struct {
-	ID       string
-	Type     string // "reminder", "document", "subscription", "goal"
-	Title    string
-	DueAt    time.Time
-	Status   string
-	EntityID string
+	ID       string    `json:"id"`
+	Type     string    `json:"type"`
+	Title    string    `json:"title"`
+	DueAt    time.Time `json:"due_at"`
+	Status   string    `json:"status"`
+	EntityID string    `json:"entity_id"`
 }
 
 // ReminderFilter holds optional filters for listing reminders.

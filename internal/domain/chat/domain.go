@@ -15,22 +15,22 @@ const (
 
 // ChatMessage represents a single message in the AI Chat Hub conversation.
 type ChatMessage struct {
-	ID             string
-	UserID         string
-	Role           MessageRole
-	Content        string
-	DetectedIntent json.RawMessage
-	CreatedAt      time.Time
+	ID             string          `json:"id"`
+	UserID         string          `json:"user_id"`
+	Role           MessageRole     `json:"role"`
+	Content        string          `json:"content"`
+	DetectedIntent json.RawMessage `json:"detected_intent,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
 }
 
 // ChatUsage tracks monthly AI Chat message consumption for a user.
 type ChatUsage struct {
-	ID           string
-	UserID       string
-	Month        time.Time // first day of the billing month
-	MessagesUsed int
-	Quota        int
-	UpdatedAt    time.Time
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	Month        time.Time `json:"month"`
+	MessagesUsed int       `json:"messages_used"`
+	Quota        int       `json:"quota"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 // Remaining returns how many messages the user may still send this month.

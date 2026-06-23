@@ -4,29 +4,29 @@ import "time"
 
 // Plan holds the feature flags and limits for a subscription tier.
 type Plan struct {
-	ID                string
-	Name              string
-	PriceIDR          float64
-	ReminderLimit     int // -1 = unlimited
-	DocumentLimit     int
-	SubscriptionLimit int
-	GoalTracker       bool
-	Timeline          bool
-	FamilyAccount     bool
-	AIChat            bool
-	AIChatQuota       int // -1 = unlimited, 0 = none
-	OCR               bool
-	CreatedAt         time.Time
+	ID                string    `json:"id"`
+	Name              string    `json:"name"`
+	PriceIDR          float64   `json:"price_idr"`
+	ReminderLimit     int       `json:"reminder_limit"`
+	DocumentLimit     int       `json:"document_limit"`
+	SubscriptionLimit int       `json:"subscription_limit"`
+	GoalTracker       bool      `json:"goal_tracker"`
+	Timeline          bool      `json:"timeline"`
+	FamilyAccount     bool      `json:"family_account"`
+	AIChat            bool      `json:"ai_chat"`
+	AIChatQuota       int       `json:"ai_chat_quota"`
+	OCR               bool      `json:"ocr"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 // UsageLimit tracks per-user resource consumption counters.
 type UsageLimit struct {
-	ID                string
-	UserID            string
-	RemindersUsed     int
-	DocumentsUsed     int
-	SubscriptionsUsed int
-	UpdatedAt         time.Time
+	ID                string    `json:"id"`
+	UserID            string    `json:"user_id"`
+	RemindersUsed     int       `json:"reminders_used"`
+	DocumentsUsed     int       `json:"documents_used"`
+	SubscriptionsUsed int       `json:"subscriptions_used"`
+	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 // IsWithinLimit returns true when the current usage for resource is below the

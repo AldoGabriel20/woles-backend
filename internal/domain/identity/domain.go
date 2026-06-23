@@ -22,21 +22,21 @@ const (
 
 // User is the core identity entity. It must not import any infrastructure package.
 type User struct {
-	ID               string
-	Email            *string
-	Phone            *string
-	PasswordHash     *string
-	Name             *string
-	AvatarURL        *string
-	Timezone         string
-	Plan             Plan
-	AccountStatus    AccountStatus
-	FailedLoginCount int
-	LockedUntil      *time.Time
-	TOTPSecret       *string
-	TOTPEnabled      bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID               string        `json:"id"`
+	Email            *string       `json:"email"`
+	Phone            *string       `json:"phone"`
+	PasswordHash     *string       `json:"-"`
+	Name             *string       `json:"name"`
+	AvatarURL        *string       `json:"avatar_url"`
+	Timezone         string        `json:"timezone"`
+	Plan             Plan          `json:"plan"`
+	AccountStatus    AccountStatus `json:"account_status"`
+	FailedLoginCount int           `json:"-"`
+	LockedUntil      *time.Time    `json:"-"`
+	TOTPSecret       *string       `json:"-"`
+	TOTPEnabled      bool          `json:"totp_enabled"`
+	CreatedAt        time.Time     `json:"created_at"`
+	UpdatedAt        time.Time     `json:"updated_at"`
 }
 
 // IsLocked returns true when the account has an active lockout window.
@@ -63,11 +63,11 @@ const (
 
 // WhatsAppIdentity links a WhatsApp phone number to a user account.
 type WhatsAppIdentity struct {
-	ID                string
-	UserID            string
-	Phone             string
-	Provider          string
-	ProviderContactID *string
-	Status            WhatsAppIdentityStatus
-	CreatedAt         time.Time
+	ID                string                 `json:"id"`
+	UserID            string                 `json:"user_id"`
+	Phone             string                 `json:"phone"`
+	Provider          string                 `json:"provider"`
+	ProviderContactID *string                `json:"provider_contact_id,omitempty"`
+	Status            WhatsAppIdentityStatus `json:"status"`
+	CreatedAt         time.Time              `json:"created_at"`
 }

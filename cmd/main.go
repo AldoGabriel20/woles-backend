@@ -161,6 +161,7 @@ func main() {
 		Users:        userRepo,
 		UsageLimits:  usageLimitRepo,
 		FileStore:    fileStore,
+		RateLimiter:  redisadapter.NewRateLimiter(redisClient),
 	}
 
 	// ── HTTP server ───────────────────────────────────────────────────────────
