@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"os"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -12,13 +13,18 @@ import (
 const csrfCookieName = "csrf_token"
 const csrfHeaderName = "X-CSRF-Token"
 
-// CSRFMiddleware implements double-submit CSRF protection.
-// GET requests: issue a new CSRF token cookie (SameSite=Strict, HttpOnly=false).
-// POST/PATCH/DELETE requests: verify X-CSRF-Token header matches csrf_token cookie.
-// Skipped for paths starting with /webhooks/.
+// CSRFMiddleware implements double-submit CSRF protection for all environments.
+// GET/HEAD/OPTIONS: issue a new CSRF token cookie.
+// POST/PATCH/DELETE: verify X-CSRF-Token header matches csrf_token cookie.
+// Skip for /webhooks/ paths (server-to-server).
+//
+// Cookie Secure flag: true in production (APP_ENV != "development") so it
+// works over plain HTTP on localhost.
 func CSRFMiddleware() fiber.Handler {
+	isProduction := os.Getenv("APP_ENV") != "development"
+
 	return func(c *fiber.Ctx) error {
-		// Skip CSRF check for webhook paths (server-to-server).
+		// Skip CSRF for webhook paths (server-to-server calls).
 		if strings.HasPrefix(c.Path(), "/webhooks/") {
 			return c.Next()
 		}
@@ -26,7 +32,6 @@ func CSRFMiddleware() fiber.Handler {
 		method := c.Method()
 
 		if method == fiber.MethodGet || method == fiber.MethodHead || method == fiber.MethodOptions {
-			// Issue a new CSRF token on safe methods.
 			token, err := generateCSRFToken()
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -39,14 +44,14 @@ func CSRFMiddleware() fiber.Handler {
 				Value:    token,
 				Path:     "/",
 				MaxAge:   86400,
-				Secure:   true,
+				Secure:   isProduction,
 				HTTPOnly: false,
 				SameSite: "Strict",
 			})
 			return c.Next()
 		}
 
-		// For state-mutating methods: validate the CSRF token.
+		// Validate CSRF token on mutating methods.
 		headerToken := c.Get(csrfHeaderName)
 		cookieToken := c.Cookies(csrfCookieName)
 
@@ -54,7 +59,6 @@ func CSRFMiddleware() fiber.Handler {
 			return csrfForbidden(c)
 		}
 
-		// Constant-time comparison to prevent timing attacks.
 		if subtle.ConstantTimeCompare([]byte(headerToken), []byte(cookieToken)) != 1 {
 			return csrfForbidden(c)
 		}

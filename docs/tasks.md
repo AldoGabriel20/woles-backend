@@ -752,6 +752,191 @@ In `tests/`:
 
 ---
 
+### TASK-046 — Implement HTTP handler logic for all REST API endpoints
+**Repo:** `woles-backend`
+
+All handler files in `internal/adapter/inbound/http_fiber/` currently return `501 Not Implemented`. This task wires every handler to its application service and implements request parsing, validation, service call, error mapping, and response marshaling.
+
+#### Step 1 — Dependency injection refactor
+
+Refactor `router.go` and all handler files to use constructor-based dependency injection:
+
+- Define a `Services` struct in `internal/adapter/inbound/http_fiber/services.go`:
+  ```go
+  type Services struct {
+      Identity     *identity.Service
+      Reminder     *reminder.Service
+      Document     *document.Service
+      Subscription *subscription.Service
+      Goal         *goal.Service
+      Timeline     *timeline.Service
+      Notification *notification.Service
+      Family       *family.Service
+      Chat         *chat.Service
+      Finance      *billing.FinancialService
+  }
+  ```
+- Change `RegisterRoutes(app *fiber.App)` → `RegisterRoutes(app *fiber.App, svc *Services)`.
+- Thread `svc` into each `Register*Routes(router, svc)` call.
+- Convert each handler group to a struct (e.g., `authHandler{svc *identity.Service}`) with methods instead of bare functions. Wire via the `Register*Routes` constructor.
+- Update `cmd/main.go` to construct all services and pass a populated `Services` to `RegisterRoutes`.
+
+#### Step 2 — Shared helpers
+
+Create `internal/adapter/inbound/http_fiber/response.go` with:
+- `userIDFromCtx(c *fiber.Ctx) string` — read `userID` from Fiber locals (set by JWT middleware). Return empty string and send 401 if missing.
+- `sendError(c *fiber.Ctx, status int, code, message string) error` — unified JSON error response `{"error": code, "message": message}`.
+- `mapServiceError(c *fiber.Ctx, err error) error` — map common service errors to HTTP status codes:
+  - `ErrNotFound` → 404
+  - `ErrForbidden` / ownership violation → 403
+  - `ErrInvalidCredentials` / `ErrAccountLocked` → 400
+  - `ErrTokenReused` / `ErrTokenInvalid` → 401
+  - `ErrAlreadyProcessed` → 409
+  - `quota_exceeded` errors → 403
+  - default → 500
+
+#### Step 3 — JWT middleware wiring in router
+
+In `RegisterRoutes`, apply `middleware.JWTMiddleware()` to all protected route groups:
+- `/api/v1/auth/logout`, `/api/v1/auth/password/change`, `/api/v1/auth/me`, `/api/v1/auth/2fa/*`, `/api/v1/auth/sessions*` — require JWT.
+- All `/api/v1/reminders`, `/api/v1/documents`, `/api/v1/subscriptions`, `/api/v1/goals`, `/api/v1/finances`, `/api/v1/timeline`, `/api/v1/notifications`, `/api/v1/family`, `/api/v1/chat`, `/api/v1/account`, `/api/v1/billing` — require JWT.
+- `/api/v1/auth/register`, `/api/v1/auth/login`, `/api/v1/auth/refresh`, `/api/v1/auth/otp/*`, `/api/v1/auth/password/reset/*` — public, no JWT.
+- `/webhooks/*` — no JWT, no CORS.
+
+#### Step 4 — Auth handlers (`auth_handler.go`)
+
+Implement each handler. The refresh token is stored in an `HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=2592000` cookie named `refresh_token`. Clear it on logout.
+
+- `handleRegister`: parse `{email, password, name, timezone}`. Call `identity.RegisterWithEmail`. On success: set refresh cookie, return `201 {"user": ..., "tokens": {"access_token": ...}}`.
+- `handleLogin`: parse `{email, password}`. Read `X-Forwarded-For`/`RemoteAddr` for IP and `User-Agent` header. Call `identity.LoginWithEmail`. Set refresh cookie. Return `200 {"user": ..., "tokens": {"access_token": ...}}`.
+- `handleRefreshToken`: read `refresh_token` cookie. Read IP + UA. Call `identity.RefreshToken`. Set new refresh cookie. Return `200 {"access_token": ...}`.
+- `handleLogout`: read `sub` (userID) and `jti` (token family) from JWT locals. Read refresh token cookie. Call `identity.Logout`. Clear cookie. Return `200 {"message": "Logged out successfully"}`.
+- `handleRequestOTP`: parse `{phone}`. Call `identity.RequestOTP`. Return `200 {"message": "OTP sent to WhatsApp"}`.
+- `handleVerifyOTP`: parse `{phone, otp}`. Call `identity.VerifyOTP`. Set refresh cookie. Return `200 {"user": ..., "tokens": {"access_token": ...}}`.
+- `handlePasswordResetRequest`: parse `{email}`. Stub — return `200 {"message": "If the email exists, a reset link has been sent"}` (constant-time response, do not leak existence).
+- `handlePasswordResetConfirm`: parse `{token, new_password}`. Stub — return `501`.
+- `handleChangePassword`: parse `{old_password, new_password}`. Call `identity.ChangePassword`. Return `200 {"message": "Password changed"}`.
+- `handleGetMe`: read userID from JWT locals. Lookup user from DB via identity repo. Return `200 {"user": ...}`.
+- `handleEnable2FA`: call `identity.Enable2FA`. Return `200 {"totp_uri": ..., "secret": ...}`.
+- `handleVerify2FA`: parse `{totp_code}`. Call `identity.Verify2FA`. Return `200 {"message": "2FA enabled"}`.
+- `handleDisable2FA`: parse `{password}`. Call `identity.Disable2FA`. Return `200 {"message": "2FA disabled"}`.
+- `handleGetSessions`: call `identity.GetActiveSessions`. Return `200 {"sessions": [...]}`.
+- `handleRevokeSession`: read `:id`. Call `identity.RevokeSession`. Return `200 {"message": "Session revoked"}`.
+- `handleRevokeAllSessions`: call `identity.LogoutAllSessions`. Clear cookie. Return `200 {"message": "All sessions revoked"}`.
+
+#### Step 5 — Reminder handlers (`reminder_handler.go`)
+
+- `handleCreateReminder`: parse body into `reminder.CreateReminderRequest` (fields: `title`, `category`, `recurrence_type`, `recurrence_rule`, `next_run_at`, `timezone`). Call `reminder.CreateReminder`. Return `201 {"reminder": ...}`.
+- `handleListReminders`: read query params `page` (default 1), `per_page` (default 20, max 100), `status`, `category`, `sort` (allowlist: `next_run_at`, `created_at`), `order` (`asc`/`desc`). Build `database.ReminderFilter`. Call `reminder.GetReminders`. Return `200 {"reminders": [...], "meta": {...pagination...}}`.
+- `handleGetReminder`: read `:id`. Call `reminder.GetReminderByID`. Return `200 {"reminder": ...}`.
+- `handleUpdateReminder`: read `:id`, parse partial body into `reminder.UpdateReminderRequest`. Call `reminder.UpdateReminder`. Return `200 {"reminder": ...}`.
+- `handleDeleteReminder`: read `:id`. Call `reminder.DeleteReminder`. Return `200 {"message": "Reminder deleted"}`.
+- `handlePauseReminder`: read `:id`. Call `reminder.PauseReminder`. Return `200 {"message": "Reminder paused"}`.
+- `handleResumeReminder`: read `:id`. Call `reminder.ResumeReminder`. Return `200 {"message": "Reminder resumed"}`.
+- `handleCompleteOccurrence`: read `:id`. Call `reminder.CompleteOccurrence`. Return `200 {"message": "Occurrence completed"}`.
+
+#### Step 6 — Document handlers (`document_handler.go`)
+
+- `handleCreateDocument`: parse body into `document.CreateDocumentRequest`. Call `document.CreateDocument`. Return `201 {"document": ...}`.
+- `handleListDocuments`: query params `page`, `per_page`, `status`, `vault_category`, `sort` (allowlist: `expiry_date`, `created_at`), `order`. Call `document.GetDocuments`. Return `200 {"documents": [...], "meta": {...}}`.
+- `handleGetDocument`: read `:id`. Call `document.GetDocumentByID`. Return `200 {"document": ...}`.
+- `handleUpdateDocument`: read `:id`, parse body. Call `document.UpdateDocument`. Return `200 {"document": ...}`.
+- `handleDeleteDocument`: read `:id`. Call `document.DeleteDocument`. Return `200 {"message": "Document deleted"}`.
+- `handleUploadDocumentFile`: read `:id`. Parse `multipart/form-data` with `c.FormFile("file")`. Validate MIME type (`application/pdf`, `image/jpeg`, `image/png`) and size (max 10 MB). Call `document.UploadDocumentFile`. Return `200 {"document": ...}`.
+- `handleGetDocumentFileURL`: read `:id`. Call `document.GetDocumentFileURL`. Return `200 {"url": ..., "expires_in": 900}`.
+- `handleDeleteDocumentFile`: read `:id`. Call `document.DeleteDocumentFile`. Return `200 {"message": "File deleted"}`.
+- `handleGetStorageUsage`: call `document.GetStorageUsage`. Return `200 {"storage": ...}`.
+- `handleGetVaultHealth`: call `document.GetVaultHealth`. Return `200 {"vault": ...}`.
+
+#### Step 7 — Subscription handlers (`subscription_handler.go`)
+
+- `handleCreateSubscription`: parse body into `subscription.CreateSubscriptionRequest`. Call `subscription.CreateSubscription`. Return `201 {"subscription": ...}`.
+- `handleListSubscriptions`: query params `page`, `per_page`, `status`, `sort` (allowlist: `next_billing_at`, `name`, `created_at`), `order`. Call `subscription.GetSubscriptions`. Return `200 {"subscriptions": [...], "meta": {...}}`.
+- `handleGetSubscription`: `:id` → `subscription.GetSubscriptionByID`. Return `200 {"subscription": ...}`.
+- `handleUpdateSubscription`: `:id` + body → `subscription.UpdateSubscription`. Return `200 {"subscription": ...}`.
+- `handleDeleteSubscription`: `:id` → `subscription.DeleteSubscription`. Return `200 {"message": "Subscription deleted"}`.
+- `handleArchiveSubscription`: `:id` → `subscription.ArchiveSubscription`. Return `200 {"message": "Subscription archived"}`.
+
+#### Step 8 — Goal handlers (`goal_handler.go`)
+
+- `handleCreateGoal`: parse body into `goal.CreateGoalRequest`. Call `goal.CreateGoal`. Return `201 {"goal": ...}`.
+- `handleListGoals`: query params `page`, `per_page`, `status`. Call `goal.GetGoals`. Return `200 {"goals": [...], "meta": {...}}`.
+- `handleGetGoal`: `:id` → `goal.GetGoalByID`. Return `200 {"goal": ...}`.
+- `handleUpdateGoal`: `:id` + body → `goal.UpdateGoal`. Return `200 {"goal": ...}`.
+- `handleDeleteGoal`: `:id` → `goal.DeleteGoal`. Return `200 {"message": "Goal deleted"}`.
+- `handleUpdateGoalProgress`: `:id`, parse `{current_amount}`. Call `goal.UpdateProgress`. Return `200 {"goal": ...}`.
+- `handleGetGoalHistory`: query params `page`, `per_page`. Call `goal.GetGoalHistory`. Return `200 {"goals": [...], "meta": {...}}`.
+
+#### Step 9 — Finance handlers (`finance_handler.go`)
+
+- `handleGetFinancialSummary`: query param `period` (default `monthly`). Call `billing.GetFinancialSummary`. Return `200 {"summary": ...}`.
+- `handleGetSpending`: query param `period`. Call `billing.GetSpendingByCategory`. Return `200 {"categories": [...]}`.
+- `handleGetSpendingTrend`: query param `period` (default `weekly`). Call `billing.GetSpendingTrend`. Return `200 {"weeks": [...]}`.
+- `handleGetUpcomingBills`: query params `page`, `per_page`. Call `billing.GetUpcomingBills`. Return `200 {"bills": [...], "meta": {...}}`.
+- `handleExportFinances`: query params `format` (`csv`), `period`. Call `billing.ExportFinances`. Set `Content-Type: text/csv` and `Content-Disposition: attachment; filename="finances.csv"`. Write raw bytes.
+
+#### Step 10 — Timeline handlers (`timeline_handler.go`)
+
+- `handleGetTimeline`: query params `range` (values: `7d`, `30d`, `90d`, `this_month`, `next_month`; default `30d`), `page`, `per_page`. Call `timeline.GetTimelineByRange`. Return `200 {"items": [...], "meta": {...}}`.
+
+#### Step 11 — Notification handlers (`notification_handler.go`)
+
+- `handleListNotifications`: query params `page`, `per_page`, `entity_type`, `status`, `from`, `to`. Build `database.NotificationFilter`. Call `notification.GetNotifications`. Return `200 {"notifications": [...], "meta": {...}}`.
+- `handleGetNotificationStats`: call `notification.GetStats`. Return `200 {"stats": ...}`.
+- `handleExportNotifications`: query params `format` (`csv`, `pdf`), `range`. Call `notification.ExportNotifications`. Set appropriate `Content-Type` and `Content-Disposition`. Write raw bytes.
+
+#### Step 12 — Family handlers (`family_handler.go`)
+
+- `handleCreateFamilyMember`: parse body into `family.CreateMemberRequest`. Call `family.CreateMember`. Return `201 {"member": ...}`.
+- `handleListFamilyMembers`: call `family.GetMembers`. Return `200 {"members": [...]}`.
+- `handleGetFamilyMember`: `:id` → `family.GetMemberByID`. Return `200 {"member": ...}`.
+- `handleUpdateFamilyMember`: `:id` + body → `family.UpdateMember`. Return `200 {"member": ...}`.
+- `handleDeleteFamilyMember`: `:id` → `family.DeleteMember`. Return `200 {"message": "Member deleted"}`.
+- `handleGetSharedReminders`: query params `page`, `per_page`. Call `family.GetSharedReminders`. Return `200 {"items": [...], "meta": {...}}`.
+
+#### Step 13 — Chat handlers (`chat_handler.go`)
+
+- `handleSendMessage`: parse `{content}`. Call `chat.SendMessage`. Return `200 {"messages": [user_message, assistant_message]}`.
+- `handleListMessages`: query params `page`, `per_page`. Call `chat.GetMessages`. Return `200 {"messages": [...], "meta": {...}}`.
+- `handleDeleteAllMessages`: call `chat.DeleteAllMessages`. Return `200 {"message": "Chat history cleared"}`.
+- `handleGetChatUsage`: call `chat.GetUsage`. Return `200 {"usage": ...}`.
+- `handleGetDetectedIntents`: call `chat.GetDetectedIntents`. Return `200 {"intents": [...]}`.
+
+#### Step 14 — Account handlers (`account_handler.go`)
+
+The account service reuses the identity service for user reads/writes. Pass `*identity.Service` (and `*storage.FileStore` for avatar).
+
+- `handleGetProfile`: read userID from JWT. Look up user via identity service. Return `200 {"user": ...}`.
+- `handleUpdateProfile`: parse `{name, timezone}`. Update user fields via identity service (add `UpdateProfile` method if not present). Return `200 {"user": ...}`.
+- `handleUploadAvatar`: parse multipart `avatar` file (JPEG/PNG, max 2 MB). Call `storage.Upload`. Update `users.avatar_url`. Return `200 {"avatar_url": ...}`.
+- `handleExportAccountData`: generate a JSON export of the user's data (profile, reminders count, documents count, subscriptions count). Return `200` with `Content-Disposition: attachment; filename="account-export.json"`.
+- `handleDeleteAccount`: call identity soft-delete (set `account_status=deleted`). Revoke all sessions. Clear cookie. Return `200 {"message": "Account deleted"}`.
+
+#### Step 15 — Billing handlers (`billing_handler.go`)
+
+- `handleGetCurrentPlan`: read `plan` from JWT locals. Query `plans_and_usage_limits` table for plan details and current usage. Return `200 {"plan": "free", "limits": {...}, "usage": {...}}`.
+- `handleCreateCheckout`: parse `{plan}`. Call payment provider service to create a checkout session/link. Return `200 {"checkout_url": ...}`. For MVP if payment provider not yet wired, return `501`.
+- `handlePaymentWebhook`: verify HMAC-SHA256 signature (`X-Payment-Signature` header vs `PAYMENT_WEBHOOK_SECRET`). Parse event. On successful payment: update `users.plan`. Return `200 {"received": true}`.
+
+#### Step 16 — Webhook handler (`webhook_handler.go`)
+
+- `handleWhatsAppWebhook`: already partially defined. Complete implementation:
+  1. Read `X-Webhook-Signature` header. Verify HMAC-SHA256 against raw body using `WHATSAPP_WEBHOOK_SECRET`. Return `401` on mismatch.
+  2. Parse body into `WhatsAppWebhookPayload`.
+  3. Publish `whatsapp.message_received` event to RabbitMQ with the raw payload.
+  4. Return `200 {"status": "received"}` immediately (async processing happens in the intent worker).
+
+#### Acceptance criteria
+
+- `go build ./...` passes with no errors.
+- All 114 registered handlers return real responses (no more `501 Not Implemented`), except `handlePasswordResetConfirm` and `handleCreateCheckout` which may remain `501` until their respective provider integrations are complete.
+- `POST /api/v1/auth/register` + `POST /api/v1/auth/login` return `200`/`201` with valid JWT.
+- `GET /api/v1/auth/me` with a valid Bearer token returns the authenticated user.
+- All protected endpoints return `401` when called without a valid Bearer token.
+- All ownership-protected endpoints (reminders, documents, etc.) return `404` when accessed with another user's ID.
+
+---
+
 ## Frontend — Foundation
 
 ### TASK-024 — Set up API client layer

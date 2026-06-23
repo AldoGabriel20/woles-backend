@@ -121,12 +121,17 @@ func (s *Service) CreateReminder(ctx context.Context, userID string, req CreateR
 		tz = "Asia/Jakarta"
 	}
 
+	category := req.Category
+	if category == "" {
+		category = domainreminder.CategoryCustom
+	}
+
 	now := time.Now().UTC()
 	rem := &domainreminder.Reminder{
 		ID:             uuid.NewString(),
 		UserID:         userID,
 		Title:          title,
-		Category:       req.Category,
+		Category:       category,
 		RecurrenceType: req.RecurrenceType,
 		RecurrenceRule: req.RecurrenceRule,
 		NextRunAt:      req.NextRunAt.UTC(),

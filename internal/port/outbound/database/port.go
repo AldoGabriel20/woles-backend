@@ -172,8 +172,10 @@ type UserRepository interface {
 	FindByID(ctx context.Context, id string) (*identity.User, error)
 	FindByEmail(ctx context.Context, email string) (*identity.User, error)
 	FindByPhone(ctx context.Context, phone string) (*identity.User, error)
+	Update(ctx context.Context, u *identity.User) error
 	UpdateFailedLoginCount(ctx context.Context, id string, count int) error
 	UpdateLockedUntil(ctx context.Context, id string, until *time.Time) error
+	UpdateAvatarURL(ctx context.Context, id string, avatarURL string) error
 	UpdatePlan(ctx context.Context, id string, plan identity.Plan) error
 	Delete(ctx context.Context, id string) error
 	SoftDelete(ctx context.Context, id string) error

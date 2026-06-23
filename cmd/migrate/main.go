@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"log"
 	"os"
@@ -38,7 +39,7 @@ func main() {
 		log.Fatalf("set dialect: %v", err)
 	}
 
-	if err = goose.RunContext(nil, command, db, "."); err != nil { //nolint:staticcheck
+	if err = goose.RunContext(context.Background(), command, db, "."); err != nil {
 		log.Fatalf("goose %s: %v", command, err)
 	}
 }

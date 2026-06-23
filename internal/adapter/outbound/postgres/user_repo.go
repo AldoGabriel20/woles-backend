@@ -138,3 +138,21 @@ func (r *UserRepo) SoftDelete(ctx context.Context, id string) error {
 	)
 	return err
 }
+
+// Update persists name and timezone changes on the user record.
+func (r *UserRepo) Update(ctx context.Context, u *identity.User) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET name = $1, timezone = $2, updated_at = NOW() WHERE id = $3`,
+		u.Name, u.Timezone, u.ID,
+	)
+	return err
+}
+
+// UpdateAvatarURL sets the avatar_url field for the user.
+func (r *UserRepo) UpdateAvatarURL(ctx context.Context, id string, avatarURL string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2`,
+		avatarURL, id,
+	)
+	return err
+}

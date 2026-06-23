@@ -684,6 +684,43 @@ func splitRefreshToken(raw string) (recordID, secret string, ok bool) {
 
 // ─── Pointer helpers ──────────────────────────────────────────────────────────
 
+// GetUserByID returns the user with the given ID, or ErrNotFound.
+func (s *Service) GetUserByID(ctx context.Context, userID string) (*domainidentity.User, error) {
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil || u == nil {
+		return nil, ErrNotFound
+	}
+	return u, nil
+}
+
+// UpdateProfile updates the user's name and/or timezone.
+func (s *Service) UpdateProfile(ctx context.Context, userID, name, timezone string) (*domainidentity.User, error) {
+	u, err := s.users.FindByID(ctx, userID)
+	if err != nil || u == nil {
+		return nil, ErrNotFound
+	}
+	if name != "" {
+		u.Name = &name
+	}
+	if timezone != "" {
+		u.Timezone = timezone
+	}
+	if err := s.users.Update(ctx, u); err != nil {
+		return nil, fmt.Errorf("update profile: %w", err)
+	}
+	return u, nil
+}
+
+// SoftDeleteUser sets account_status=deleted and revokes all sessions.
+func (s *Service) SoftDeleteUser(ctx context.Context, userID string) error {
+	if err := s.users.SoftDelete(ctx, userID); err != nil {
+		return fmt.Errorf("soft delete user: %w", err)
+	}
+	_ = s.refreshTokens.RevokeAllForUser(ctx, userID)
+	_ = s.sessions.DeleteAllForUser(ctx, userID)
+	return nil
+}
+
 func strPtr(s string) *string {
 	if s == "" {
 		return nil

@@ -1,35 +1,96 @@
 package http_fiber
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"fmt"
+	"time"
+
+	"github.com/gofiber/fiber/v2"
+	appnotification "github.com/woles/woles-backend/internal/application/notification"
+	domainnotification "github.com/woles/woles-backend/internal/domain/notification"
+	"github.com/woles/woles-backend/internal/port/outbound/database"
+)
+
+type notificationHandler struct{ svc *appnotification.Service }
 
 // RegisterNotificationRoutes mounts all /api/v1/notifications routes.
-func RegisterNotificationRoutes(router fiber.Router) {
+func RegisterNotificationRoutes(router fiber.Router, svc *Services) {
+	h := &notificationHandler{svc: svc.Notification}
 	n := router.Group("/notifications")
-
-	// Static sub-paths must come before the /:id catch-all.
-	n.Get("/stats", handleGetNotificationStats)
-	n.Get("/export", handleExportNotifications)
-
-	n.Get("/", handleListNotifications)
-	n.Get("/:id", handleGetNotification)
+	n.Get("/stats", h.stats)
+	n.Get("/export", h.export)
+	n.Get("/", h.list)
 }
 
-// handleListNotifications handles GET /api/v1/notifications?page=1&per_page=20&category=vehicle&range=30d&status=sent
-func handleListNotifications(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
+func (h *notificationHandler) list(c *fiber.Ctx) error {
+	userID, abort := requireUserID(c)
+	if abort {
+		return nil
+	}
+	page := pageParam(c)
+	perPage := perPageParam(c, 20, 100)
+	filter := database.NotificationFilter{}
+	if et := c.Query("entity_type"); et != "" {
+		t := domainnotification.NotificationEntityType(et)
+		filter.EntityType = &t
+	}
+	if st := c.Query("status"); st != "" {
+		s := domainnotification.NotificationStatus(st)
+		filter.Status = &s
+	}
+	if from := c.Query("from"); from != "" {
+		t, err := time.Parse("2006-01-02", from)
+		if err != nil {
+			return sendError(c, fiber.StatusUnprocessableEntity, "validation_error", "from must be YYYY-MM-DD")
+		}
+		filter.From = &t
+	}
+	if to := c.Query("to"); to != "" {
+		t, err := time.Parse("2006-01-02", to)
+		if err != nil {
+			return sendError(c, fiber.StatusUnprocessableEntity, "validation_error", "to must be YYYY-MM-DD")
+		}
+		filter.To = &t
+	}
+	result, err := h.svc.GetNotifications(c.Context(), userID, filter, page, perPage)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(fiber.Map{
+		"notifications": result.Items,
+		"meta":          paginationMeta(result.Page, result.PerPage, result.Total, result.TotalPages),
+	})
 }
 
-// handleGetNotification handles GET /api/v1/notifications/:id
-func handleGetNotification(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
+func (h *notificationHandler) stats(c *fiber.Ctx) error {
+	userID, abort := requireUserID(c)
+	if abort {
+		return nil
+	}
+	stats, err := h.svc.GetStats(c.Context(), userID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(fiber.Map{"stats": stats})
 }
 
-// handleGetNotificationStats handles GET /api/v1/notifications/stats
-func handleGetNotificationStats(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
-}
-
-// handleExportNotifications handles GET /api/v1/notifications/export?format=pdf&range=30d
-func handleExportNotifications(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
+func (h *notificationHandler) export(c *fiber.Ctx) error {
+	userID, abort := requireUserID(c)
+	if abort {
+		return nil
+	}
+	format := c.Query("format", "csv")
+	rangeStr := c.Query("range", "30d")
+	data, err := h.svc.ExportNotifications(c.Context(), userID, format, rangeStr)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	mimeType := "text/csv"
+	ext := "csv"
+	if format == "pdf" {
+		mimeType = "application/pdf"
+		ext = "pdf"
+	}
+	c.Set("Content-Type", mimeType)
+	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notifications.%s"`, ext))
+	return c.Send(data)
 }

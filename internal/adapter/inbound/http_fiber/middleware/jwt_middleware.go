@@ -47,17 +47,23 @@ func JWTMiddleware() fiber.Handler {
 		}
 		raw := strings.TrimPrefix(header, "Bearer ")
 
+		parseOpts := []jwt.ParserOption{
+			jwt.WithValidMethods([]string{"RS256"}),
+			jwt.WithExpirationRequired(),
+		}
+		if iss := os.Getenv("JWT_ISSUER"); iss != "" {
+			parseOpts = append(parseOpts, jwt.WithIssuer(iss))
+		}
+		if aud := os.Getenv("JWT_AUDIENCE"); aud != "" {
+			parseOpts = append(parseOpts, jwt.WithAudience(aud))
+		}
+
 		token, err := jwt.Parse(raw, func(t *jwt.Token) (interface{}, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 				return nil, errInvalidToken
 			}
 			return jwtPublicKey, nil
-		},
-			jwt.WithValidMethods([]string{"RS256"}),
-			jwt.WithExpirationRequired(),
-			jwt.WithIssuer(os.Getenv("JWT_ISSUER")),
-			jwt.WithAudience(os.Getenv("JWT_AUDIENCE")),
-		)
+		}, parseOpts...)
 		if err != nil || !token.Valid {
 			return unauthorized(c)
 		}

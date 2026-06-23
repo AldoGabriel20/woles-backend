@@ -12,7 +12,7 @@ import (
 
 // RegisterWebhookRoutes mounts the WhatsApp inbound webhook.
 // This route must be registered WITHOUT CORS and WITHOUT CSRF middleware.
-func RegisterWebhookRoutes(app *fiber.App) {
+func RegisterWebhookRoutes(app *fiber.App, svc *Services) {
 	app.Post("/webhooks/whatsapp/:provider", handleWhatsAppWebhook)
 }
 

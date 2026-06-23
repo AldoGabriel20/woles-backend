@@ -1,39 +1,40 @@
 package http_fiber
 
-import "github.com/gofiber/fiber/v2"
+import (
+	"github.com/gofiber/fiber/v2"
+	appsubscription "github.com/woles/woles-backend/internal/application/subscription"
+)
+
+type financeHandler struct{ svc *appsubscription.Service }
 
 // RegisterFinanceRoutes mounts all /api/v1/finances routes.
-func RegisterFinanceRoutes(router fiber.Router) {
+func RegisterFinanceRoutes(router fiber.Router, svc *Services) {
+	h := &financeHandler{svc: svc.Subscription}
 	f := router.Group("/finances")
-
-	f.Get("/summary", handleGetFinancialSummary)
-	f.Get("/spending", handleGetSpendingByCategory)
-	f.Get("/trend", handleGetSpendingTrend)
-	f.Get("/upcoming-bills", handleGetUpcomingBills)
-	f.Get("/export", handleExportFinances)
+	f.Get("/summary", h.summary)
+	f.Get("/monthly-costs", h.monthlyCosts)
 }
 
-// handleGetFinancialSummary handles GET /api/v1/finances/summary?period=monthly
-func handleGetFinancialSummary(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
+func (h *financeHandler) summary(c *fiber.Ctx) error {
+	userID, abort := requireUserID(c)
+	if abort {
+		return nil
+	}
+	costs, err := h.svc.GetMonthlyCostSummary(c.Context(), userID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(fiber.Map{"summary": costs})
 }
 
-// handleGetSpendingByCategory handles GET /api/v1/finances/spending?period=monthly
-func handleGetSpendingByCategory(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
-}
-
-// handleGetSpendingTrend handles GET /api/v1/finances/trend?period=weekly
-func handleGetSpendingTrend(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
-}
-
-// handleGetUpcomingBills handles GET /api/v1/finances/upcoming-bills?page=1&per_page=20
-func handleGetUpcomingBills(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
-}
-
-// handleExportFinances handles GET /api/v1/finances/export?format=csv&period=monthly
-func handleExportFinances(c *fiber.Ctx) error {
-	return c.Status(fiber.StatusNotImplemented).JSON(fiber.Map{"status": "not_implemented"})
+func (h *financeHandler) monthlyCosts(c *fiber.Ctx) error {
+	userID, abort := requireUserID(c)
+	if abort {
+		return nil
+	}
+	costs, err := h.svc.GetMonthlyCostSummary(c.Context(), userID)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(fiber.Map{"monthly_costs": costs})
 }
