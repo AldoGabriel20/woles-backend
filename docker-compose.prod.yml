@@ -1,0 +1,220 @@
+# Production Docker Compose
+# Usage: docker compose -f docker-compose.prod.yml up -d
+#
+# Prerequisites:
+#   - Copy .env.prod.example → .env.prod and fill in all secrets
+#   - SSL certificates provisioned via Certbot (see nginx service below)
+#   - Registry image pushed via CI (ghcr.io/AldoGabriel20/woles-backend)
+
+version: "3.9"
+
+# All services share a single private network.
+# Only nginx exposes public ports (80, 443).
+networks:
+  woles-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitmqdata:
+  miniodata:
+  certbot-conf:
+  certbot-www:
+
+services:
+  # ─── API ──────────────────────────────────────────────────────────────────
+  api:
+    image: ghcr.io/aldogabriel20/woles-backend:latest
+    container_name: woles-api
+    restart: always
+    expose:
+      - "8080"
+    env_file:
+      - .env.prod
+    environment:
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?sslmode=disable
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - STORAGE_SECRET_KEY=${MINIO_SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - woles-net
+
+  # ─── Notification Worker ──────────────────────────────────────────────────
+  worker:
+    image: ghcr.io/aldogabriel20/woles-backend:latest
+    container_name: woles-worker
+    restart: always
+    entrypoint: ["/app/worker"]
+    env_file:
+      - .env.prod
+    environment:
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?sslmode=disable
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - STORAGE_SECRET_KEY=${MINIO_SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - woles-net
+
+  # ─── Scheduler ────────────────────────────────────────────────────────────
+  scheduler:
+    image: ghcr.io/aldogabriel20/woles-backend:latest
+    container_name: woles-scheduler
+    restart: always
+    entrypoint: ["/app/scheduler"]
+    env_file:
+      - .env.prod
+    environment:
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?sslmode=disable
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - woles-net
+
+  # ─── PostgreSQL ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: woles-postgres
+    restart: always
+    # No public port — internal only
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - woles-net
+
+  # ─── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: woles-redis
+    restart: always
+    expose:
+      - "6379"
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --save 60 1
+      --loglevel warning
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - woles-net
+
+  # ─── RabbitMQ ─────────────────────────────────────────────────────────────
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: woles-rabbitmq
+    restart: always
+    expose:
+      - "5672"
+    # Management UI is accessible only via nginx (admin subdomain) or SSH tunnel
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    networks:
+      - woles-net
+
+  # ─── MinIO (object storage) ───────────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: woles-minio
+    restart: always
+    expose:
+      - "9000"
+      - "9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+    command: server /data --console-address ":9001"
+    volumes:
+      - miniodata:/data
+    networks:
+      - woles-net
+
+  # ─── Nginx (reverse proxy + TLS) ─────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: woles-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot-conf:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    depends_on:
+      - api
+    networks:
+      - woles-net
+
+  # ─── Certbot (SSL certificate renewal) ───────────────────────────────────
+  certbot:
+    image: certbot/certbot:latest
+    container_name: woles-certbot
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # Run: docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+    #        --webroot --webroot-path=/var/www/certbot \
+    #        -d api.woles.id -d woles.id -d www.woles.id \
+    #        --email admin@woles.id --agree-tos --no-eff-email
+    entrypoint: >
+      /bin/sh -c "trap exit TERM;
+        while :; do certbot renew --quiet --webroot --webroot-path=/var/www/certbot;
+        sleep 12h & wait $${!}; done"
+    networks:
+      - woles-net
