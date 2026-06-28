@@ -30,10 +30,17 @@ const (
 type ReminderCategory string
 
 const (
-	CategoryBill     ReminderCategory = "bill"
-	CategoryVehicle  ReminderCategory = "vehicle"
-	CategoryDocument ReminderCategory = "document"
-	CategoryCustom   ReminderCategory = "custom"
+	CategoryBill         ReminderCategory = "bill"
+	CategoryHealth       ReminderCategory = "health"
+	CategoryVehicle      ReminderCategory = "vehicle"
+	CategoryInsurance    ReminderCategory = "insurance"
+	CategorySubscription ReminderCategory = "subscription"
+	CategoryTax          ReminderCategory = "tax"
+	CategoryPersonal     ReminderCategory = "personal"
+	CategoryWork         ReminderCategory = "work"
+	CategoryFamily       ReminderCategory = "family"
+	CategoryDocument     ReminderCategory = "document"
+	CategoryCustom       ReminderCategory = "custom"
 )
 
 // ReminderSource indicates how the reminder was created.

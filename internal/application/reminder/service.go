@@ -100,8 +100,8 @@ func (s *Service) CreateReminder(ctx context.Context, userID string, req CreateR
 		return nil, fmt.Errorf("%w: unknown recurrence_type %q", ErrInvalidInput, req.RecurrenceType)
 	}
 
-	// Validate next_run_at is in the future.
-	if !req.NextRunAt.After(time.Now()) {
+	// Validate next_run_at is not too far in the past (allow 10-minute grace for clock skew / form defaults).
+	if req.NextRunAt.Before(time.Now().Add(-10 * time.Minute)) {
 		return nil, fmt.Errorf("%w: next_run_at must be in the future", ErrInvalidInput)
 	}
 
@@ -492,7 +492,14 @@ func validRecurrenceType(t domainreminder.RecurrenceType) bool {
 func validCategory(c domainreminder.ReminderCategory) bool {
 	switch c {
 	case domainreminder.CategoryBill,
+		domainreminder.CategoryHealth,
 		domainreminder.CategoryVehicle,
+		domainreminder.CategoryInsurance,
+		domainreminder.CategorySubscription,
+		domainreminder.CategoryTax,
+		domainreminder.CategoryPersonal,
+		domainreminder.CategoryWork,
+		domainreminder.CategoryFamily,
 		domainreminder.CategoryDocument,
 		domainreminder.CategoryCustom:
 		return true

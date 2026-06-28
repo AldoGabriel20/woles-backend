@@ -365,7 +365,7 @@ Create a reminder.
 
 **Valid `category` values:** `bill`, `health`, `vehicle`, `insurance`, `subscription`, `tax`, `personal`, `work`, `family`, `custom`
 
-**Valid `recurrence_type` values:** `once`, `daily`, `weekly`, `monthly`, `yearly`, `custom_interval`
+**Valid `recurrence_type` values:** `one_time`, `daily`, `weekly`, `monthly`, `yearly`, `custom_interval`
 
 **Response 422 (invalid category):**
 ```json

@@ -13,6 +13,11 @@ const (
 	VaultIdentity   VaultCategory = "identity"
 	VaultInsurance  VaultCategory = "insurance"
 	VaultFinancials VaultCategory = "financials"
+	VaultFinancial  VaultCategory = "financial"
+	VaultProperty   VaultCategory = "property"
+	VaultHealth     VaultCategory = "health"
+	VaultEducation  VaultCategory = "education"
+	VaultLegal      VaultCategory = "legal"
 	VaultOther      VaultCategory = "other"
 )
 

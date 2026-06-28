@@ -49,7 +49,10 @@ func (h *reminderHandler) create(c *fiber.Ctx) error {
 	}
 	var nextRunAt time.Time
 	if body.NextRunAt != "" {
-		t, err := time.Parse(time.RFC3339, body.NextRunAt)
+		t, err := time.Parse(time.RFC3339Nano, body.NextRunAt)
+		if err != nil {
+			t, err = time.Parse(time.RFC3339, body.NextRunAt)
+		}
 		if err != nil {
 			return sendError(c, fiber.StatusUnprocessableEntity, "validation_error", "next_run_at must be RFC3339")
 		}
@@ -93,6 +96,9 @@ func (h *reminderHandler) list(c *fiber.Ctx) error {
 	if cat := c.Query("category"); cat != "" {
 		c2 := domainreminder.ReminderCategory(cat)
 		filter.Category = &c2
+	}
+	if q := c.Query("search"); q != "" {
+		filter.Search = &q
 	}
 
 	allowedSort := map[string]bool{"next_run_at": true, "created_at": true}
@@ -161,7 +167,10 @@ func (h *reminderHandler) update(c *fiber.Ctx) error {
 		req.RecurrenceType = &rt
 	}
 	if body.NextRunAt != nil {
-		t, err := time.Parse(time.RFC3339, *body.NextRunAt)
+		t, err := time.Parse(time.RFC3339Nano, *body.NextRunAt)
+		if err != nil {
+			t, err = time.Parse(time.RFC3339, *body.NextRunAt)
+		}
 		if err != nil {
 			return sendError(c, fiber.StatusUnprocessableEntity, "validation_error", "next_run_at must be RFC3339")
 		}

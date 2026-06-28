@@ -27,6 +27,7 @@ func RegisterDocumentRoutes(router fiber.Router, svc *Services) {
 	d.Patch("/:id", h.update)
 	d.Delete("/:id", h.delete)
 	d.Post("/:id/file", h.uploadFile)
+	d.Get("/:id/file/url", h.getFileURL)
 	d.Delete("/:id/file", h.deleteFile)
 }
 
@@ -56,6 +57,9 @@ func (h *documentHandler) create(c *fiber.Ctx) error {
 		Title:           body.Title,
 		DocumentType:    domaindocument.DocumentType(body.DocumentType),
 		ReminderOffsets: body.ReminderOffsets,
+	}
+	if req.DocumentType == "" {
+		req.DocumentType = domaindocument.DocTypeOther
 	}
 	if body.VaultCategory != "" {
 		vc := domaindocument.VaultCategory(body.VaultCategory)
@@ -198,6 +202,18 @@ func (h *documentHandler) deleteFile(c *fiber.Ctx) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(fiber.Map{"message": "File deleted"})
+}
+
+func (h *documentHandler) getFileURL(c *fiber.Ctx) error {
+	userID, abort := requireUserID(c)
+	if abort {
+		return nil
+	}
+	url, err := h.svc.GetDocumentFileURL(c.Context(), userID, c.Params("id"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(fiber.Map{"url": url})
 }
 
 func (h *documentHandler) storageUsage(c *fiber.Ctx) error {

@@ -295,9 +295,10 @@ func buildAssistantReply(r *ai.IntentResult) string {
 		return "Dokumen Anda siap disimpan."
 	case "query_timeline":
 		return "Berikut adalah jadwal mendatang Anda."
+	case "general_query":
+		return "Saya siap membantu! Anda bisa meminta saya untuk membuat pengingat, mencatat langganan, menyimpan dokumen, atau menetapkan target keuangan. Ada yang bisa saya bantu?"
 	default:
-		return fmt.Sprintf("Terdeteksi maksud: %s (confidence: %.0f%%). Ada yang bisa saya bantu lebih lanjut?",
-			r.Intent, r.Confidence*100)
+		return "Ada yang bisa saya bantu? Contohnya: \"Ingatkan bayar listrik tiap tanggal 10\" atau \"Catat langganan Netflix Rp 186.000 per bulan\"."
 	}
 }
 

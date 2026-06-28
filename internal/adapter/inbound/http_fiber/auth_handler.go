@@ -148,7 +148,7 @@ func (h *authHandler) refreshToken(c *fiber.Ctx) error {
 		return mapServiceError(c, err)
 	}
 	setRefreshCookie(c, pair.RefreshToken)
-	return c.JSON(fiber.Map{"access_token": pair.AccessToken})
+	return c.JSON(fiber.Map{"tokens": fiber.Map{"access_token": pair.AccessToken}})
 }
 
 func (h *authHandler) logout(c *fiber.Ctx) error {

@@ -1,7 +1,6 @@
 package http_fiber
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -84,13 +83,18 @@ func (h *notificationHandler) export(c *fiber.Ctx) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	mimeType := "text/csv"
-	ext := "csv"
-	if format == "pdf" {
-		mimeType = "application/pdf"
-		ext = "pdf"
+	switch format {
+	case "pdf":
+		c.Set("Content-Type", "application/pdf")
+		c.Set("Content-Disposition", `attachment; filename="notifications.pdf"`)
+		return c.Send(data)
+	case "excel":
+		c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+		c.Set("Content-Disposition", `attachment; filename="notifications.xlsx"`)
+		return c.Send(data)
+	default: // csv
+		c.Set("Content-Type", "text/csv")
+		c.Set("Content-Disposition", `attachment; filename="notifications.csv"`)
+		return c.Send(data)
 	}
-	c.Set("Content-Type", mimeType)
-	c.Set("Content-Disposition", fmt.Sprintf(`attachment; filename="notifications.%s"`, ext))
-	return c.Send(data)
 }

@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -43,8 +44,31 @@ var _ whatsappport.WhatsAppSender = noopWhatsAppSender{}
 
 type noopIntentExtractor struct{}
 
-func (noopIntentExtractor) Extract(_ context.Context, _, _ string) (*aiport.IntentResult, error) {
-	return &aiport.IntentResult{Intent: "unknown", Confidence: 0}, nil
+func (noopIntentExtractor) Extract(_ context.Context, text, _ string) (*aiport.IntentResult, error) {
+	lower := strings.ToLower(text)
+	switch {
+	case containsAny(lower, "ingatkan", "reminder", "pengingat", "bayar", "tagihan", "jatuh tempo", "perpanjang"):
+		return &aiport.IntentResult{Intent: "create_reminder", Confidence: 0.75, Payload: map[string]interface{}{"text": text}}, nil
+	case containsAny(lower, "langganan", "subscribe", "subscription", "berlangganan", "netflix", "spotify", "disney"):
+		return &aiport.IntentResult{Intent: "create_subscription", Confidence: 0.75, Payload: map[string]interface{}{"text": text}}, nil
+	case containsAny(lower, "target", "nabung", "tabungan", "tujuan", "goal", "simpan", "dana"):
+		return &aiport.IntentResult{Intent: "create_goal", Confidence: 0.75, Payload: map[string]interface{}{"text": text}}, nil
+	case containsAny(lower, "dokumen", "document", "sim", "stnk", "passport", "paspor", "ktp", "bpkb"):
+		return &aiport.IntentResult{Intent: "create_document", Confidence: 0.75, Payload: map[string]interface{}{"text": text}}, nil
+	case containsAny(lower, "jadwal", "timeline", "schedule", "kapan", "apa saja"):
+		return &aiport.IntentResult{Intent: "query_timeline", Confidence: 0.70, Payload: map[string]interface{}{"text": text}}, nil
+	default:
+		return &aiport.IntentResult{Intent: "general_query", Confidence: 0.5, Payload: map[string]interface{}{"text": text}}, nil
+	}
+}
+
+func containsAny(s string, keywords ...string) bool {
+	for _, kw := range keywords {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 var _ aiport.IntentExtractor = noopIntentExtractor{}
